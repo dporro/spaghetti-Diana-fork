@@ -21,7 +21,7 @@ from dipy.tracking.distances import (bundles_distances_mam,
 					most_similar_track_mam)
 from dipy.tracking.distances import approx_polygon_track
 from nibabel import trackvis as tv
-
+import colorsys
 from matplotlib.mlab import find
 
 def load_data(id):
@@ -106,14 +106,30 @@ def show_tracks_colormaps(tracks, qb, alpha=1):
     w.refocus_camera()
     return w, region, la
 
-def show_tracks_fvtk(tracks):    
+def show_tracks_fvtk(tracks, qb=None, color_tracks=True):    
     r=fvtk.ren()
-    colormap = np.ones((len(tracks), 3))
-    counter = 0
-    for curve in tracks:
-        colormap[counter:counter+len(curve),:3] = track2rgb(curve).astype('f4')
-        counter += len(curve)
-    fvtk.add(r, fvtk.line(tracks,colormap,linewidth=3))
+    if qb is None:
+        colormap = np.ones((len(tracks), 3))
+        for i, curve in enumerate(tracks):
+            colormap[i] = track2rgb(curve)
+        fvtk.add(r, fvtk.line(tracks,colormap,linewidth=3))
+    else:
+        centroids=qb.virtuals()
+        if not color_tracks:
+            colormap = np.ones((len(centroids), 3))
+            H=np.linspace(0,1,len(centroids)+1)
+            for i, centroid in enumerate(centroids):
+                col=np.array(colorsys.hsv_to_rgb(H[i],1.,1.))
+                colormap[i] = col
+            fvtk.add(r, fvtk.line(centroids, colormap, linewidth=3))
+        if color_tracks:
+            colormap = np.ones((len(tracks), 3))
+            H=np.linspace(0, 1, len(centroids)+1)
+            for i, centroid in enumerate(centroids):
+                col=np.array(colorsys.hsv_to_rgb(H[i], 1., 1.))
+                inds=qb.label2tracksids(i)
+                colormap[inds]=col
+            fvtk.add(r, fvtk.line(tracks, colormap, linewidth=3))
     fvtk.show(r)
     return r
 
@@ -236,12 +252,12 @@ if __name__ == '__main__' :
     """
     tracks=load_pbc_data(3)
     print 'Streamlines loaded'
-    qb=QuickBundles(tracks, 30, 18)
+    qb=QuickBundles(tracks, 20, 18)
     #print 'QuickBundles finished'
     #print 'visualize/interact with streamlines'
     #window, region, axes, labeler = show_qb_streamlines(tracks, qb)
     #w, region, la = show_tracks_colormaps(tracks,qb)
-    r = show_tracks_fvtk(tracks)
+    r = show_tracks_fvtk(tracks, qb)
 
     """
     N=qb.total_clusters()
