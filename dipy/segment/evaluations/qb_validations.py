@@ -1,21 +1,27 @@
 """ Validating QuickBundles
 """
-
+import os.path as osp
 import numpy as np
 import dipy as dp
 # track reading
 from dipy.io.dpy import Dpy
+from dipy.io.pickles import load_pickle, save_pickle
 # segmenation
 from dipy.segment.quickbundles import QuickBundles
 # visualization
 from fos import Window, Region
-from fos.actor import Axes, Text3D
-from bundle_picker import TrackLabeler
+from fos.actor import Axes, Text3D, Line
+from fos.actor.line import one_colour_per_line
+from bundle_picker import TrackLabeler, track2rgb
+from dipy.viz import fvtk
 # metrics 
 from dipy.tracking.metrics import downsample
 from dipy.tracking.distances import (bundles_distances_mam,
 					bundles_distances_mdf,
 					most_similar_track_mam)
+from dipy.tracking.distances import approx_polygon_track
+from nibabel import trackvis as tv
+
 
 from matplotlib.mlab import find
 
@@ -27,16 +33,35 @@ def load_data(id):
 	dp.close()
 	return tracks
 
-def show_qb_streamlines(tracks,qb):
+def load_pbc_data(id=None):
+    if id is None:
+        path = '/home/eg309/Data/PBC/pbc2009icdm/brain1/'
+        streams, hdr = tv.read(path+'brain1_scan1_fiber_track_mni.trk')
+        streamlines = [s[0] for s in streams]
+        return streamlines
+    if not osp.exists('/tmp/'+str(id)+'.pkl'):
+        path = '/home/eg309/Data/PBC/pbc2009icdm/brain1/'
+        streams, hdr = tv.read(path+'brain1_scan1_fiber_track_mni.trk')
+        streamlines = [s[0] for s in streams]
+        labels = np.loadtxt(path+'brain1_scan1_fiber_labels.txt')
+        labels = labels[:,1]
+        mask_cst = labels == id
+        cst_streamlines = [s for (i,s) in enumerate(streamlines) if mask_cst[i]]
+        save_pickle('/tmp/'+str(id)+'.pkl', cst_streamlines)
+        return cst_streamlines
+        #return [approx_polygon_track(s, 0.7853) for s in cst_streamlines]
+    else:
+        return load_pickle('/tmp/'+str(id)+'.pkl')    
+
+
+def show_qb_streamlines(tracks, qb):
 	# Create gui and message passing (events)
-	w = Window(caption = 'QB validation', 
-		width = 1200, 
-		height = 800, 
-		bgcolor = (0.,0.,0.2) )
+	w = Window(caption='QB validation', 
+		width=1200, 
+		height=800, 
+		bgcolor=(0.,0.,0.2) )
 	# Create a region of the world of actors
-	region = Region( regionname = 'Main',
-			extent_min = np.array([-5.0, -5, -5]),
-			extent_max = np.array([5, 5 ,5]))
+	region = Region(regionname='Main', activate_aabb=False)
 	# Create actors
 	tl = TrackLabeler('Bundle Picker',
 			qb,qb.downsampled_tracks(),
@@ -52,10 +77,40 @@ def show_qb_streamlines(tracks,qb):
 	#Add the region to the window
 	w.add_region(region)
 	w.refocus_camera()
-
 	print 'Actors loaded'
-
 	return w,region,ax,tex
+
+def show_tracks_colormaps(tracks, qb, alpha=1):
+    w = Window(caption='QuickBundles Representation', 
+            width=1200, 
+            height=800, 
+            bgcolor=(0.,0.,0.2))
+    region = Region(regionname='Main', activate_aabb=False)
+
+    colormap = np.ones((len(tracks), 3))
+    counter = 0
+    for curve in tracks:
+        colormap[counter:counter+len(curve),:3] = track2rgb(curve).astype('f4')
+        counter += len(curve)
+    colors = one_colour_per_line(tracks, colormap)
+    colors[:,3]=alpha
+    la = Line('Streamlines', tracks, colors, line_width=2)
+    region.add_actor(la)
+    w.add_region(region)
+    w.refocus_camera()
+    return w, region, la
+
+def show_tracks_fvtk(tracks):    
+    r=fvtk.ren()
+    colormap = np.ones((len(tracks), 3))
+    counter = 0
+    for curve in tracks:
+        colormap[counter:counter+len(curve),:3] = track2rgb(curve).astype('f4')
+        counter += len(curve)
+    fvtk.add(r, fvtk.line(tracks,colormap,linewidth=3))
+    fvtk.show(r)
+    return r
+
 
 def get_random_streamlines(tracks,N):	
 	#qb = QuickBundles(tracks,dist,18)
@@ -65,10 +120,10 @@ def get_random_streamlines(tracks,N):
 	return random_streamlines
 		
 def count_close_tracks(sla, slb, dist_thr=20):
-        cnt_a_close = zeros(len(slb))
+        cnt_a_close = np.zeros(len(slb))
         for ta in sla:
             dta = bundles_distances_mdf([ta],slb)[0]
-#            dta = bundles_distances_mam([ta],slb)[0]
+            #dta = bundles_distances_mam([ta],slb)[0]
             cnt_a_close += binarise(dta, dist_thr)
         return cnt_a_close
 
@@ -95,111 +150,66 @@ def binarise(D, thr):
 #Replaces elements of D which are <thr with 1 and the rest with 0
         return 1*(np.array(D)<thr)
 
-id=0
+if __name__ == '__main__' :
+    """
+    id=0
+    tracks=load_data(id)
+    track_subset_size = 1000
+    tracks=tracks[:track_subset_size]
+    """
+    tracks=load_pbc_data(3)
+    print 'Streamlines loaded'
+    qb=QuickBundles(tracks, 30, 18)
+    #print 'QuickBundles finished'
+    #print 'visualize/interact with streamlines'
+    #window, region, axes, labeler = show_qb_streamlines(tracks, qb)
+    #w, region, la = show_tracks_colormaps(tracks,qb)
+    r = show_tracks_fvtk(tracks)
 
-tracks=load_data(id)
+    """
+    N=qb.total_clusters()
+    print 'QB finished with', N, 'clusters'
 
-track_subset_size = 50000
+    random_streamlines={}
+    for rep in [0]:
+        random_streamlines[rep] = get_random_streamlines(qb.downsampled_tracks(), N)
+            
+    # Thresholded distance matrices (subset x tracks) where subset Q = QB centroids
+    # and subset R = matched random subset. Matrices have 1 if the compared
+    # tracks have MDF distance < threshold a,d 0 otherwise.
+    #DQ=compare_streamline_sets(qb.virtuals(),qb.downsampled_tracks(), 20)
+    #DR=compare_streamline_sets(random_streamlines[0],qb.downsampled_tracks(), 20)
 
-tracks=tracks[:track_subset_size]
-print 'Streamlines loaded'
-#qb=QuickBundles(tracks,20,18)
-#print 'QuickBundles finished'
-#print 'visualize/interact with streamlines'
-#window,region,axes,labeler = show_qb_streamlines(tracks,qb)
+    # The number of subset tracks 'close' to each track
+    #neighbours_Q = np.sum(DQ, axis=0)
+    #neighbours_R = np.sum(DR, axis=0)
+    neighbours_Q = count_close_tracks(qb.virtuals(), qb.downsampled_tracks(), 20)
+    neighbours_R = count_close_tracks(random_streamlines[0], qb.downsampled_tracks(), 20)
 
-qb = QuickBundles(tracks,20,18)
-N=qb.total_clusters()
-print 'QB finished with', N, 'clusters'
+    maxclose = np.int(np.max(np.hstack((neighbours_Q,neighbours_R))))
 
-random_streamlines={}
-for rep in [0]:
-	random_streamlines[rep] = get_random_streamlines(qb.downsampled_tracks(), N)
-	
-# Thresholded distance matrices (subset x tracks) where subset Q = QB centroids
-# and subset R = matched random subset. Matrices have 1 if the compared
-# tracks have MDF distance < threshold a,d 0 otherwise.
-#DQ=compare_streamline_sets(qb.virtuals(),qb.downsampled_tracks(), 20)
-#DR=compare_streamline_sets(random_streamlines[0],qb.downsampled_tracks(), 20)
+    # The numbers of tracks 0, 1, 2, ... 'close' subset tracks
+    counts = [(np.int(n), len(find(neighbours_Q==n)), len(find(neighbours_R==n)))
+              for n in range(maxclose+1)]
 
-# The number of subset tracks 'close' to each track
-#neighbours_Q = np.sum(DQ, axis=0)
-#neighbours_R = np.sum(DR, axis=0)
-neighbours_Q = count_close_tracks(qb.virtuals(), qb.downsampled_tracks(), 20)
-neighbours_R = count_close_tracks(random_streamlines[0], qb.downsampled_tracks(), 20)
+    print np.array(counts)
 
-maxclose = np.int(np.max(np.hstack((neighbours_Q,neighbours_R))))
+    # Typically counts_Q shows (a) very few tracks with 0 close QB
+    # centroids, (b) many tracks with a small number (between 1 and 3?) close QB
+    # tracks, and (c) few tracks with many (>3?) close QB tracks
 
-# The numbers of tracks 0, 1, 2, ... 'close' subset tracks
-counts = [(np.int(n), len(find(neighbours_Q==n)), len(find(neighbours_R==n)))
-          for n in range(maxclose+1)]
+    # By contrast counts_R shows (a) a large number of tracks with 0 close
+    # R (random) neighbours, (b) fewer tracks with a small number of close R
+    # tracks, and (c) a long tail showing how the R sample has over-sampled
+    # in dense parts of the tractography, coming up with several rather
+    # similar tracks. By contast the QB tracks are dissimilar by design - or
+    # can be thought of as more evenly distributed in track space.
 
-print np.array(counts)
+    # The output below was generated with subject 02, 5k tracks, and threshold 20.
+    # Column 0 is the neighbour count, and Columns 1 and 2 are the
+    # number of tracks with that neighbour count.
 
-# Typically counts_Q shows (a) very few tracks with 0 close QB
-# centroids, (b) many tracks with a small number (between 1 and 3?) close QB
-# tracks, and (c) few tracks with many (>3?) close QB tracks
-
-# By contrast counts_R shows (a) a large number of tracks with 0 close
-# R (random) neighbours, (b) fewer tracks with a small number of close R
-# tracks, and (c) a long tail showing how the R sample has over-sampled
-# in dense parts of the tractography, coming up with several rather
-# similar tracks. By contast the QB tracks are dissimilar by design - or
-# can be thought of as more evenly distributed in track space.
-
-# The output below was generated with subject 02, 5k tracks, and threshold 20.
-# Column 0 is the neighbour count, and Columns 1 and 2 are the
-# number of tracks with that neighbour count.
-
-# I suppose you could say this revealed some kind of sparseness for the
-# QB subset by comparison with the Random one
-
-"""
-counts, Qfreq, Rfreq 
-191 clusters
-
-[[   0    2  668]
- [   1 1174  828]
- [   2 1905  720]
- [   3 1279  703]
- [   4  491  572]
- [   5  117  505]
- [   6   28  393]
- [   7    2  249]
- [   8    2  144]
- [   9    0  104]
- [  10    0   40]
- [  11    0   23]
- [  12    0   15]
- [  13    0   16]
- [  14    0    7]
- [  15    0    8]
- [  16    0    5]]
-
-Now with thresholds (10,10) and 10k tracks
-QB finished with 1830 clusters
-[[   0    6 1696]
- [   1 4879 1957]
- [   2 3454 1694]
- [   3 1315 1448]
- [   4  292 1060]
- [   5   52  687]
- [   6    2  401]
- [   7    0  285]
- [   8    0  200]
- [   9    0  164]
- [  10    0  114]
- [  11    0   80]
- [  12    0   43]
- [  13    0   39]
- [  14    0   27]
- [  15    0   21]
- [  16    0   20]
- [  17    0   19]
- [  18    0   21]
- [  19    0   12]
- [  20    0    8]
- [  21    0    3]
- [  22    0    1]]
-'''
+    # I suppose you could say this revealed some kind of sparseness for the
+    # QB subset by comparison with the Random one
+    """
 
