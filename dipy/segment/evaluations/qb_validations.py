@@ -106,13 +106,12 @@ def show_tracks_colormaps(tracks, qb, alpha=1):
     w.refocus_camera()
     return w, region, la
 
-def show_tracks_fvtk(tracks, qb=None, option='only_reps'):    
-    r=fvtk.ren()
+def show_tracks_fvtk(tracks, qb=None, option='only_reps', r=None, opacity=1):    
     if qb is None:
         colormap = np.ones((len(tracks), 3))
         for i, curve in enumerate(tracks):
             colormap[i] = track2rgb(curve)
-        fvtk.add(r, fvtk.line(tracks,colormap,linewidth=3))
+        fvtk.add(r, fvtk.line(tracks,colormap, opacity=opacity, linewidth=3))
     else:
         centroids=qb.virtuals()
         if option == 'only_reps':
@@ -121,7 +120,8 @@ def show_tracks_fvtk(tracks, qb=None, option='only_reps'):
             for i, centroid in enumerate(centroids):
                 col=np.array(colorsys.hsv_to_rgb(H[i],1.,1.))
                 colormap[i] = col
-            fvtk.add(r, fvtk.line(centroids, colormap, linewidth=3))
+            fvtk.add(r, fvtk.line(centroids, colormap, opacity=opacity,
+                                  linewidth=5))
         if option == 'reps_and_tracks':
             colormap = np.ones((len(tracks), 3))
             H=np.linspace(0, 1, len(centroids)+1)
@@ -129,15 +129,15 @@ def show_tracks_fvtk(tracks, qb=None, option='only_reps'):
                 col=np.array(colorsys.hsv_to_rgb(H[i], 1., 1.))
                 inds=qb.label2tracksids(i)
                 colormap[inds]=col
-            fvtk.add(r, fvtk.line(tracks, colormap, linewidth=3))
+            fvtk.add(r, fvtk.line(tracks, colormap, opacity=opacity, linewidth=3))
         if option == 'thick_reps':
             H=np.linspace(0,1,len(centroids)+1)
             S=np.array(qb.clusters_sizes())
             for i, centroid in enumerate(centroids):
                 col=np.array(colorsys.hsv_to_rgb(H[i],1.,1.))
-                fvtk.add(r, fvtk.line([centroid], col, linewidth=np.interp(S[i],(S.min(),S.max()),(1,5))))
-    fvtk.show(r)
-    return r
+                fvtk.add(r, fvtk.line([centroid], col, opacity=opacity,
+                                      linewidth=np.interp(S[i],(S.min(),S.max()),(3,10))))
+    fvtk.show(r, size=(1000, 800))
 
 
 def get_random_streamlines(tracks,N):	
@@ -250,20 +250,30 @@ def half_split_comparisons():
 
 
 if __name__ == '__main__' :
-    #"""
+    """
     id=0
     tracks=load_data(id)
     track_subset_size = 1000
     tracks=tracks[:track_subset_size]
-    #"""
-    #tracks=load_pbc_data(1)
+    """
+    tracks=load_pbc_data(3)
     print 'Streamlines loaded'
-    qb=QuickBundles(tracks, 30, 18)
+    qb=QuickBundles(tracks, 10, 18)
     #print 'QuickBundles finished'
     #print 'visualize/interact with streamlines'
     #window, region, axes, labeler = show_qb_streamlines(tracks, qb)
     #w, region, la = show_tracks_colormaps(tracks,qb)
-    r = show_tracks_fvtk(tracks, qb, option='thick_reps')
+    options=['only_reps', 'reps_and_tracks', 'thick_reps']
+    
+    ren = fvtk.ren()
+    ren.SetBackground(1,1,1)
+    show_tracks_fvtk(tracks, None, r=ren, opacity=0.2)
+    fvtk.clear(ren)
+    #show_tracks_fvtk(tracks, qb, option=options[0], r=ren, opacity=0.2)
+    #fvtk.clear(ren)
+    show_tracks_fvtk(tracks, qb, option=options[1], r=ren, opacity=0.2)
+    fvtk.clear(ren)
+    show_tracks_fvtk(tracks, qb, option=options[2], r=ren, opacity=0.8)
 
     """
     N=qb.total_clusters()
