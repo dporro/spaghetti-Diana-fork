@@ -106,7 +106,7 @@ def show_tracks_colormaps(tracks, qb, alpha=1):
     w.refocus_camera()
     return w, region, la
 
-def show_tracks_fvtk(tracks, qb=None, color_tracks=True):    
+def show_tracks_fvtk(tracks, qb=None, option='only_reps'):    
     r=fvtk.ren()
     if qb is None:
         colormap = np.ones((len(tracks), 3))
@@ -115,14 +115,14 @@ def show_tracks_fvtk(tracks, qb=None, color_tracks=True):
         fvtk.add(r, fvtk.line(tracks,colormap,linewidth=3))
     else:
         centroids=qb.virtuals()
-        if not color_tracks:
+        if option == 'only_reps':
             colormap = np.ones((len(centroids), 3))
             H=np.linspace(0,1,len(centroids)+1)
             for i, centroid in enumerate(centroids):
                 col=np.array(colorsys.hsv_to_rgb(H[i],1.,1.))
                 colormap[i] = col
             fvtk.add(r, fvtk.line(centroids, colormap, linewidth=3))
-        if color_tracks:
+        if option == 'reps_and_tracks':
             colormap = np.ones((len(tracks), 3))
             H=np.linspace(0, 1, len(centroids)+1)
             for i, centroid in enumerate(centroids):
@@ -130,6 +130,12 @@ def show_tracks_fvtk(tracks, qb=None, color_tracks=True):
                 inds=qb.label2tracksids(i)
                 colormap[inds]=col
             fvtk.add(r, fvtk.line(tracks, colormap, linewidth=3))
+        if option == 'thick_reps':
+            H=np.linspace(0,1,len(centroids)+1)
+            S=np.array(qb.clusters_sizes())
+            for i, centroid in enumerate(centroids):
+                col=np.array(colorsys.hsv_to_rgb(H[i],1.,1.))
+                fvtk.add(r, fvtk.line([centroid], col, linewidth=np.interp(S[i],(S.min(),S.max()),(1,5))))
     fvtk.show(r)
     return r
 
@@ -244,20 +250,20 @@ def half_split_comparisons():
 
 
 if __name__ == '__main__' :
-    """
+    #"""
     id=0
     tracks=load_data(id)
     track_subset_size = 1000
     tracks=tracks[:track_subset_size]
-    """
-    tracks=load_pbc_data(3)
+    #"""
+    #tracks=load_pbc_data(1)
     print 'Streamlines loaded'
-    qb=QuickBundles(tracks, 20, 18)
+    qb=QuickBundles(tracks, 30, 18)
     #print 'QuickBundles finished'
     #print 'visualize/interact with streamlines'
     #window, region, axes, labeler = show_qb_streamlines(tracks, qb)
     #w, region, la = show_tracks_colormaps(tracks,qb)
-    r = show_tracks_fvtk(tracks, qb)
+    r = show_tracks_fvtk(tracks, qb, option='thick_reps')
 
     """
     N=qb.total_clusters()
