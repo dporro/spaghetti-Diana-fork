@@ -1,6 +1,7 @@
 """ Validating QuickBundles
 """
 import os.path as osp
+from time import time
 import numpy as np
 import dipy as dp
 # track reading
@@ -13,6 +14,7 @@ from fos import Window, Region
 from fos.actor import Axes, Text3D, Line
 from fos.actor.line import one_colour_per_line
 from bundle_picker import TrackLabeler, track2rgb
+from dipy.viz.colormap import boys2rgb
 from dipy.viz import fvtk
 # metrics 
 from dipy.tracking.metrics import downsample
@@ -31,7 +33,20 @@ def load_data(id):
         print 'Loading', filename
 	tracks=dp.read_tracks()
 	dp.close()
-	return tracks
+        #if down:
+        #    return [downsample(t, 18) for t in tracks]
+        return tracks
+
+def load_a_big_tractography_downsampled():
+    if osp.exists('/tmp/3M_linear_12.npy'):
+        return np.load('/tmp/3M_linear_12.npy')
+    filename='/home/eg309/Data/trento_processed/subj_01/101_32/DTI/tracks_gqi_3M_linear.dpy'
+    dp=Dpy(filename,'r')
+    tracks=dp.read_tracks()
+    dp.close()
+    tracks=[downsample(t, 12) for t in tracks]
+    np.save('/tmp/3M_linear_12.npy', tracks)
+    return tracks
 
 def load_pbc_data(id=None):
     if id is None:
@@ -106,7 +121,7 @@ def show_tracks_colormaps(tracks, qb, alpha=1):
     w.refocus_camera()
     return w, region, la
 
-def show_tracks_fvtk(tracks, qb=None, option='only_reps', r=None, opacity=1):    
+def show_tracks_fvtk(tracks, qb=None, option='only_reps', r=None, opacity=1, size=10):    
     if qb is None:
         colormap = np.ones((len(tracks), 3))
         for i, curve in enumerate(tracks):
@@ -135,9 +150,23 @@ def show_tracks_fvtk(tracks, qb=None, option='only_reps', r=None, opacity=1):
             S=np.array(qb.clusters_sizes())
             for i, centroid in enumerate(centroids):
                 col=np.array(colorsys.hsv_to_rgb(H[i],1.,1.))
+                fvtk.add(r, fvtk.line([centroid], col, opacity=opacity,        
+                    linewidth=np.interp(S[i],(S.min(),S.max()),(3,10))))
+        if option == 'thick_reps_big':
+            qb.remove_small_clusters(size)
+            qb.virts=None
+            centroids=qb.virtuals()
+            H=np.linspace(0,1,len(centroids)+1)
+            S=np.array(qb.clusters_sizes())
+
+            for i, centroid in enumerate(centroids):
+                #col=np.array(colorsys.hsv_to_rgb(H[i],1.,1.))
+                col=track2rgb(centroid)
+                #col=boys2rgb(centroid)
                 fvtk.add(r, fvtk.line([centroid], col, opacity=opacity,
                                       linewidth=np.interp(S[i],(S.min(),S.max()),(3,10))))
-    fvtk.show(r, size=(1000, 800))
+
+    fvtk.show(r, size=(1000, 1000))
 
 
 def get_random_streamlines(tracks,N):	
@@ -249,31 +278,120 @@ def half_split_comparisons():
     print np.array(counts)
 
 
-if __name__ == '__main__' :
-    """
-    id=0
-    tracks=load_data(id)
-    track_subset_size = 1000
-    tracks=tracks[:track_subset_size]
-    """
-    tracks=load_pbc_data(3)
+def prepare_timings():
+    tracks=load_a_big_tractography_downsampled()
+    blocks=np.arange(0,len(tracks),50000)[1:]
+    print blocks
+    distances=[30., 25., 20.]
+    times={}
+    noclusters={}
+    for d in distances:
+        times[d]=[]
+        noclusters[d]=[]
+        for b in blocks:
+            t1=time()
+            qb=QuickBundles(tracks[:b], d, None)
+            t2=time()
+            times[d].append(t2-t1)
+            noclusters[d].append(qb.total_clusters())
+            print d, b, t2-t1, qb.total_clusters()
+    return times, noclusters, blocks
+
+def plot_timings(times, noclusters, blocks, alpha=0.5, linewidth=4):
+    import matplotlib.pyplot as plt
+    
+    #distances=[30., 25., 20.]
+    distances=[20.,25.,30.]
+    facecolors=['blue','red','green']
+    ax1=plt.subplot(111)
+    plt.rcParams['font.size']=20
+    plt.rcParams['legend.fontsize']=20
+    plt.title('Execution times for a range of \n tractography sizes and distance thresholds')
+    for (i,d) in enumerate(distances):
+        plt.plot(blocks, times[d], label=str(d)+' mm', color=facecolors[i], alpha=alpha, linewidth=linewidth)
+        #plt.fill_between(blocks, times[d], facecolor=facecolors[i], alpha=alpha)
+    ax1.set_xticklabels(['50K', '100K', '150K', '200K', '250K', '300K', '350K', '400K', '450K', '500K'])
+    ax1.set_xbound(50*10**3, 500*10**3)
+    ax1.set_ylabel('Seconds')
+    ax1.set_xlabel('Number of streamlines')
+    plt.legend(loc='upper left')
+    plt.show()
+
+def show_fornix(distance=15):
+    tracks=load_pbc_data(5)
     print 'Streamlines loaded'
-    qb=QuickBundles(tracks, 10, 18)
+    qb=QuickBundles(tracks, distance, 18)
     #print 'QuickBundles finished'
     #print 'visualize/interact with streamlines'
     #window, region, axes, labeler = show_qb_streamlines(tracks, qb)
     #w, region, la = show_tracks_colormaps(tracks,qb)
-    options=['only_reps', 'reps_and_tracks', 'thick_reps']
-    
+    print 'Total number of clusters', qb.total_clusters()
+    print 'Cluster sizes', qb.clusters_sizes()
+    options=['only_reps', 'reps_and_tracks', 'thick_reps']    
     ren = fvtk.ren()
     ren.SetBackground(1,1,1)
     show_tracks_fvtk(tracks, None, r=ren, opacity=0.2)
     fvtk.clear(ren)
     #show_tracks_fvtk(tracks, qb, option=options[0], r=ren, opacity=0.2)
     #fvtk.clear(ren)
-    show_tracks_fvtk(tracks, qb, option=options[1], r=ren, opacity=0.2)
-    fvtk.clear(ren)
     show_tracks_fvtk(tracks, qb, option=options[2], r=ren, opacity=0.8)
+    fvtk.clear(ren)
+    show_tracks_fvtk(tracks, qb, option=options[1], r=ren, opacity=0.2)
+
+def show_arcuate(ren, label_id=1, opacity=0.4):
+    tracks=load_pbc_data(label_id)
+    qb=QuickBundles(tracks, 40, 18)
+    centroids=qb.virtuals()
+    DM=bundles_distances_mdf(centroids, qb.downsampled_tracks())
+    DM=np.squeeze(DM)
+    #ren=fvtk.ren()    
+    v=np.interp(DM, [DM.min(), DM.max()], [0, 1])
+    red=np.interp(v, [0.0,0.125,0.25,0.375,0.5,0.625,0.75,0.875,1.0],
+                     [0.0,0.125,0.25,0.375,0.5,0.625,0.75,0.875,1.0])
+    green=np.zeros(red.shape)
+    blue=np.interp(v, [0.0,0.125,0.25,0.375,0.5,0.625,0.75,0.875,1.0],
+                      [1.0,0.875,0.75,0.625,0.5,0.375,0.25,0.125,0.0])
+    #blue=green
+    colors=np.vstack((red, green, blue)).T
+    fvtk.add(ren,fvtk.line(tracks, colors, opacity=opacity, linewidth=3))
+    fvtk.add(ren,fvtk.line(centroids, fvtk.yellow, opacity=1., linewidth=10))
+    ren.SetBackground(1, 1, 1)
+    fvtk.show(ren, size=(1000, 1000))
+
+
+def show_brains(id,subset,dist,remove=0.003):    
+    tracks=load_data(id)
+    track_subset_size = subset
+    tracks=tracks[:track_subset_size]
+    #tracks=load_pbc_data(3)
+    print 'Streamlines loaded'
+    qb=QuickBundles(tracks, dist, 18)
+    #print 'QuickBundles finished'
+    #print 'visualize/interact with streamlines'
+    #window, region, axes, labeler = show_qb_streamlines(tracks, qb)
+    #w, region, la = show_tracks_colormaps(tracks,qb)
+    options=['only_reps', 'reps_and_tracks', 'thick_reps', 'thick_reps_big']
+    ren = fvtk.ren()
+    ren.SetBackground(1,1,1)
+    show_tracks_fvtk(tracks, None, r=ren, opacity=1.)
+    fvtk.record(ren,n_frames=1,out_path='/tmp/pics/'+str(id)+'a.png',size=(1000,1000),bgr_color=(1,1,1))
+    fvtk.clear(ren)
+    #show_tracks_fvtk(tracks, qb, option=options[2], r=ren, opacity=0.8)
+    #fvtk.clear(ren)
+    show_tracks_fvtk(tracks, qb, option=options[3], r=ren, opacity=0.8, size=remove*len(tracks))
+    fvtk.record(ren,n_frames=1,out_path='/tmp/pics/'+str(id)+'b.png',size=(1000,1000),bgr_color=(1,1,1)) 
+    fvtk.clear(ren)
+    return qb
+
+
+if __name__ == '__main__' :
+    """
+    clusters_sizes=[]
+    for i in range(10):
+        qb=show_brains(i, 10000, 25, 0.003)
+        clusters_sizes.append(qb.clusters_sizes)
+    """
+
 
     """
     N=qb.total_clusters()
