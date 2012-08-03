@@ -17,7 +17,7 @@ from bundle_picker import TrackLabeler, track2rgb
 from dipy.viz.colormap import boys2rgb
 from dipy.viz import fvtk
 # metrics 
-from dipy.tracking.metrics import downsample
+from dipy.tracking.metrics import downsample, length
 from dipy.tracking.distances import (bundles_distances_mam,
 					bundles_distances_mdf,
 					most_similar_track_mam)
@@ -36,6 +36,42 @@ def load_data(id):
         #if down:
         #    return [downsample(t, 18) for t in tracks]
         return tracks
+
+def load_data_elfthin(id, ref=True):
+    ids=['02','03','04','05','06','08','09','10','11','12']
+    dname='/media/SeaOfElfarion/PhD_thesis_data/Data/PROC_MR10032/'
+    if ref:
+        filename =  dname + 'subj_'+ids[id]+'/101_32/GQI/lsc_QA_ref.dpy'
+    if not ref:
+        filename =  dname + 'subj_'+ids[id]+'/101_32/GQI/lsc_QA.dpy'
+    dp=Dpy(filename,'r')
+    print 'Loading', filename
+    tracks=dp.read_tracks()
+    dp.close()
+    #if down:
+    #    return [downsample(t, 18) for t in tracks]
+    return tracks
+
+def load_dpy_save_qb(id, dist=10., down=18, ref=False):
+    ids=['02','03','04','05','06','08','09','10','11','12']
+    dname='/media/SeaOfElfarion/PhD_thesis_data/Data/PROC_MR10032/'
+    if ref:
+        filename =  dname + 'subj_'+ids[id]+'/101_32/GQI/lsc_QA_ref.dpy'
+    if not ref:
+        filename =  dname + 'subj_'+ids[id]+'/101_32/GQI/lsc_QA.dpy'
+    dp=Dpy(filename,'r')
+    print 'Loading', filename
+    tracks=dp.read_tracks()
+    dp.close()
+    final='/home/eg309/Desktop/10subs/'
+    if not ref:
+        dist=dist/2.5
+    qb=QuickBundles(tracks, dist, down)
+    save_pickle(final+str(id)+'_dist_'+str(dist)+'_down_'+str(down)+'_ref_'+str(ref)+'.pkl', qb)
+
+def load_qb(id, dist=10., down=18, ref=False):
+    final='/home/eg309/Desktop/10subs/'
+    return load_pickle(final+str(id)+'_dist_'+str(dist)+'_down_'+str(down)+'_ref_'+str(ref)+'.pkl')
 
 def load_a_big_tractography_downsampled():
     if osp.exists('/tmp/3M_linear_12.npy'):
@@ -67,7 +103,6 @@ def load_pbc_data(id=None):
         #return [approx_polygon_track(s, 0.7853) for s in cst_streamlines]
     else:
         return load_pickle('/tmp/'+str(id)+'.pkl')    
-
 
 def get_tractography_sizes():
         sizes = []
@@ -121,7 +156,8 @@ def show_tracks_colormaps(tracks, qb, alpha=1):
     w.refocus_camera()
     return w, region, la
 
-def show_tracks_fvtk(tracks, qb=None, option='only_reps', r=None, opacity=1, size=10):    
+def show_tracks_fvtk(tracks, qb=None, option='only_reps', r=None, opacity=1,
+                     size=10, biggest_clusters=20):    
     if qb is None:
         colormap = np.ones((len(tracks), 3))
         for i, curve in enumerate(tracks):
@@ -165,9 +201,31 @@ def show_tracks_fvtk(tracks, qb=None, option='only_reps', r=None, opacity=1, siz
                 #col=boys2rgb(centroid)
                 fvtk.add(r, fvtk.line([centroid], col, opacity=opacity,
                                       linewidth=np.interp(S[i],(S.min(),S.max()),(3,10))))
+        if option == 'big_cluster_tracks':
+            qb.remove_small_clusters(size)
+            qb.virts=None
+            centroids=qb.virtuals()
+            for i, centroid in enumerate(centroids):
+                col=track2rgb(centroid)
+                ctracks=qb.label2tracks(tracks, i)
+                colormap = np.ones((len(ctracks), 3))
+                colormap[:,:] = col
+                fvtk.add(r, fvtk.line(ctracks, colormap, opacity=opacity, linewidth=3))
+        if option == 'biggest_clusters':
+            cs=qb.clusters_sizes()
+            ci=np.argsort(cs)[:len(cs)-biggest_clusters]            
+            qb.remove_clusters(ci)
+            qb.virts=None
+            centroids=qb.virtuals()
+            for i, centroid in enumerate(centroids):
+                col=track2rgb(centroid)
+                ctracks=qb.label2tracks(tracks, i)
+                colormap = np.ones((len(ctracks), 3))
+                colormap[:,:] = col
+                #fvtk.add(r, fvtk.line(ctracks, colormap, opacity=opacity, linewidth=3))
+                fvtk.add(r, fvtk.line([centroid], col, opacity=opacity, linewidth=3))
 
-    fvtk.show(r, size=(1000, 1000))
-
+    fvtk.show(r, size=(700, 700))
 
 def get_random_streamlines(tracks,N):	
 	#qb = QuickBundles(tracks,dist,18)
@@ -194,28 +252,26 @@ def split_halves(id):
         second_half= np.random.permutation(np.arange(len(tracks)))[M:N]
         return [tracks[n] for n in first_half], [tracks[n] for n in second_half]
 
-'''
-coverage = # neighb tracks / #tracks 
-         = cntT.sum()/len(T)
+def dumped_ideas():
+    """
+    coverage = \# neighb tracks / \#tracks 
+             = cntT.sum()/len(T)
 
-overlap = (cntT>1).sum()/len(T)
+    overlap = (cntT>1).sum()/len(T)
 
-missed == (cntT==0).sum()/len(T)
-'''
-
-#virtuals/#tracks
-        
-'''
-compare_streamline_sets(sla,slb,dist=20):
-	d = bundles_distances_mdf(sla,slb)
-	d[d<dist]=1
-	d[d>=dist]=0
-	return d 
-'''
+    missed == (cntT==0).sum()/len(T)
+            
+    compare_streamline_sets(sla,slb,dist=20):
+            d = bundles_distances_mdf(sla,slb)
+            d[d<dist]=1
+            d[d>=dist]=0
+            return d 
+    """
+    pass
 
 def binarise(D, thr):
-#Replaces elements of D which are <thr with 1 and the rest with 0
-        return 1*(np.array(D)<thr)
+    #Replaces elements of D which are <thr with 1 and the rest with 0
+    return 1*(np.array(D)<thr)
 
 def half_split_comparisons():
 
@@ -250,7 +306,7 @@ def half_split_comparisons():
     '''
     random_streamlines={}
     for rep in [0]:
-            random_streamlines[rep] = get_random_streamlines(qb.downsampled_tracks(), N)
+        random_streamlines[rep] = get_random_streamlines(qb.downsampled_tracks(), N)
     '''
 
     # Thresholded distance matrices (subset x tracks) where subset Q = QB centroids
@@ -272,11 +328,9 @@ def half_split_comparisons():
     maxclose = np.int(np.max(np.hstack((neighbours_first,neighbours_second))))
 
     # The numbers of tracks 0, 1, 2, ... 'close' subset tracks
-    counts = [(np.int(n), len(find(neighbours_first==n)), len(find(neighbours_second==n)))
-              for n in range(maxclose+1)]
+    counts = [(np.int(n), len(find(neighbours_first==n)), len(find(neighbours_second==n))) for n in range(maxclose+1)]
 
     print np.array(counts)
-
 
 def prepare_timings():
     tracks=load_a_big_tractography_downsampled()
@@ -317,6 +371,120 @@ def plot_timings(times, noclusters, blocks, alpha=0.5, linewidth=4):
     plt.legend(loc='upper left')
     plt.show()
 
+def plot_bas():
+    import matplotlib.pyplot as plt
+    bas10=load_pickle('/home/eg309/Desktop/bas_dist10.pkl')
+    bas20=load_pickle('/home/eg309/Desktop/bas_dist20.pkl')
+    fig=plt.figure()
+    ax1=fig.add_subplot(111)
+    plt.rcParams['font.size']=24
+    plt.rcParams['legend.fontsize']=20
+    #plt.title('Bundle Adjacencies of the \n combinations of the 10 subjects')
+    from itertools import combinations
+    xticks=[]
+    pairs=[]
+    for c in combinations(range(10), 2):
+        xticks.append(str(c[0]+1)+'-'+str(c[1]+1))
+        pairs.append(c)
+    X=np.arange(len(bas20))+1
+    plt.plot(X, bas20, label='20 mm', linewidth=4)
+    plt.plot(X, bas10, label='10 mm', linewidth=4)
+    plt.fill_between(X, bas20, facecolor=(0.1, 0.1, 0.6))
+    plt.fill_between(X, bas10, facecolor=(0.1, 0.6, 0.1))
+    ax1.set_ybound(0.3, 1.)
+    ax1.set_xbound(1, 45)
+    ax1.set_xticks(np.arange(1, 46))
+    ax1.set_ylabel('Bundle adjacency')
+    ax1.set_xlabel('Combination Number')
+    #ax1.set_xticklabels(xticks)
+    xtickNames = plt.setp(ax1, xticklabels=xticks)
+    plt.setp(xtickNames, rotation=60, fontsize=20)
+    plt.legend(loc='upper left')
+    #http://matplotlib.sourceforge.net/faq/howto_faq.html#automatically-make-room-for-tick-labels
+
+    #fig.canvas.mpl_connect('draw_event', on_draw)
+    fig.subplots_adjust(bottom=0.15)
+    fig.subplots_adjust(left=0.1)
+    #fig.subplots_adjust(right=0.1)
+
+    plt.show()
+    return xticks, X
+
+def show_best_worse_bas():
+    bas10=load_pickle('/home/eg309/Desktop/bas_dist10.pkl')
+    bas20=load_pickle('/home/eg309/Desktop/bas_dist20.pkl')
+    from itertools import combinations
+    pairs=[]
+    for c in combinations(range(10), 2):
+        pairs.append(c)
+
+    print 'bas10'
+    print 'min',np.min(bas10), 'max', np.max(bas10), 'mean', np.mean(bas10), 'std', np.std(bas10) 
+    print 'argmin', pairs[np.argmin(bas10)]
+    print 'argmax', pairs[np.argmax(bas10)]
+
+    print 'bas20'
+    print 'min',np.min(bas20), 'max', np.max(bas20), 'mean', np.mean(bas20), 'std', np.std(bas20)
+    print 'argmin', pairs[np.argmin(bas20)]
+    print 'argmax', pairs[np.argmax(bas20)]
+
+    return bas10, bas20, pairs
+
+
+
+
+
+def bundle_adjacency(dtracks0, dtracks1, dist):
+
+    d01=bundles_distances_mdf(dtracks0,dtracks1)    
+    pair12=[]
+    solo1=[]
+    for i in range(len(dtracks0)):
+        if np.min(d01[i,:]) < dist:
+            j=np.argmin(d01[i,:])
+            pair12.append((i,j))
+        else:            
+            solo1.append(dtracks0[i])
+    pair12=np.array(pair12)
+    
+    pair21=[]
+    solo2=[]
+    for i in range(len(dtracks1)):
+        if np.min(d01[:,i]) < dist:
+            j=np.argmin(d01[:,i])
+            pair21.append((i,j))
+        else:
+            solo2.append(dtracks1[i])
+            
+    pair21=np.array(pair21)
+    
+    return 0.5*(len(pair12)/np.float(len(dtracks0))+len(pair21)/np.float(len(dtracks1)))
+
+def keep_biggest(qb, biggest_clusters):
+    #qb=load_qb(id, dist=dist, down=down, ref=ref)
+    cs=qb.clusters_sizes()
+    ci=np.argsort(cs)[:len(cs)-biggest_clusters]            
+    qb.remove_clusters(ci)
+    qb.virts=None
+    #centroids=qb.virtuals()
+
+def compare_biggest(biggest=100, ba_dist=10.0):
+    dist=10.0
+    down=18
+    ref=True
+    from itertools import combinations
+    bas=[]
+    for c in combinations(range(10), 2):
+        print c
+        qb=load_qb(c[0], dist=dist, down=down, ref=ref)
+        keep_biggest(qb, biggest)
+        v0=qb.virtuals()
+        qb=load_qb(c[1], dist=dist, down=down, ref=ref)
+        keep_biggest(qb, biggest)
+        v1=qb.virtuals()
+        bas.append(bundle_adjacency(v0, v1, ba_dist))
+    return bas
+
 def show_fornix(distance=15):
     tracks=load_pbc_data(5)
     print 'Streamlines loaded'
@@ -353,38 +521,93 @@ def show_arcuate(ren, label_id=1, opacity=0.4):
                       [1.0,0.875,0.75,0.625,0.5,0.375,0.25,0.125,0.0])
     #blue=green
     colors=np.vstack((red, green, blue)).T
-    fvtk.add(ren,fvtk.line(tracks, colors, opacity=opacity, linewidth=3))
-    fvtk.add(ren,fvtk.line(centroids, fvtk.yellow, opacity=1., linewidth=10))
+    ln=fvtk.line(tracks, colors, opacity=opacity, linewidth=3)
+    fvtk.add(ren,ln)
     ren.SetBackground(1, 1, 1)
-    fvtk.show(ren, size=(1000, 1000))
+    fvtk.show(ren, size=(700, 700))
+    fvtk.record(ren, n_frames=1, out_path='/tmp/pics/'+str(label_id)+'_',
+                size=(700, 700),bgr_color=(1, 1, 1),magnification=2)
 
+    fvtk.add(ren,fvtk.line(centroids, fvtk.yellow, opacity=1., linewidth=10))
+    fvtk.rm(ren, ln)
+    ln2=fvtk.line(tracks, colors, opacity=0, linewidth=3)
+    fvtk.add(ren, ln2)
+    fvtk.show(ren, size=(700, 700))
+    fvtk.record(ren, n_frames=1, out_path='/tmp/pics/'+str(label_id)+'_centr_',
+                size=(700,700), bgr_color=(1, 1, 1), magnification=2)
 
-def show_brains(id,subset,dist,remove=0.003):    
-    tracks=load_data(id)
-    track_subset_size = subset
-    tracks=tracks[:track_subset_size]
+def show_brains(id,dist=10.,down=18, ref=False, remove=0.003, biggest=50):    
+    #tracks=load_data_elfthin(id, False)
+    #track_subset_size = subset
+    #tracks=tracks[:track_subset_size]
     #tracks=load_pbc_data(3)
-    print 'Streamlines loaded'
-    qb=QuickBundles(tracks, dist, 18)
+    #print 'Streamlines loaded'
+    #qb=QuickBundles(tracks, dist, 18)
+    qb=load_qb(id, dist=dist, down=down, ref=ref)
+    tracks=qb.downsampled_tracks()
     #print 'QuickBundles finished'
     #print 'visualize/interact with streamlines'
     #window, region, axes, labeler = show_qb_streamlines(tracks, qb)
     #w, region, la = show_tracks_colormaps(tracks,qb)
-    options=['only_reps', 'reps_and_tracks', 'thick_reps', 'thick_reps_big']
+    options=['only_reps', 'reps_and_tracks', 'thick_reps', 'thick_reps_big',
+             'big_cluster_tracks', 'biggest_clusters']
     ren = fvtk.ren()
-    ren.SetBackground(1,1,1)
-    show_tracks_fvtk(tracks, None, r=ren, opacity=1.)
-    fvtk.record(ren,n_frames=1,out_path='/tmp/pics/'+str(id)+'a.png',size=(1000,1000),bgr_color=(1,1,1))
+    ren.SetBackground(1, 1, 1)
+    show_tracks_fvtk(tracks, None, r=ren, opacity=.2)
+    picsd='/home/eg309/Desktop/pics/'
+    fvtk.record(ren,n_frames=1,out_path=picsd + str(id)+'a',size=(700, 700),bgr_color=(1,1,1))
     fvtk.clear(ren)
     #show_tracks_fvtk(tracks, qb, option=options[2], r=ren, opacity=0.8)
     #fvtk.clear(ren)
-    show_tracks_fvtk(tracks, qb, option=options[3], r=ren, opacity=0.8, size=remove*len(tracks))
-    fvtk.record(ren,n_frames=1,out_path='/tmp/pics/'+str(id)+'b.png',size=(1000,1000),bgr_color=(1,1,1)) 
+    #show_tracks_fvtk(tracks, qb, option=options[3], r=ren, opacity=0.8, size=remove*len(tracks))
+    #fvtk.record(ren,n_frames=1,out_path=picsd + str(id)+'b',size=(700, 700),bgr_color=(1,1,1)) 
+    #fvtk.clear(ren)
+    show_tracks_fvtk(tracks, qb, option=options[5], r=ren, opacity=1, size=20,
+                     biggest_clusters=biggest)
+    fvtk.record(ren,n_frames=1,out_path=picsd + str(id)+'b',size=(700, 700),bgr_color=(1,1,1)) 
     fvtk.clear(ren)
     return qb
 
+def stats():
+
+    allc=[]
+    alls=[]
+    allcov=[]
+    alllengths=[]
+
+    for i in range(10):
+        qb=load_qb(i, ref=True)
+        lengths=[]
+        print 'ID', i
+        print '---Total clusters ', qb.total_clusters()
+        allc.append(qb.total_clusters())
+        print '---Total streamlines ', len(qb.tracksd)
+        alls.append(len(qb.tracksd))
+        cs=qb.clusters_sizes()
+        ci=np.argsort(cs)[len(cs)-100:] #1500 for 85% coverage     
+        coverage=[]
+        virts=qb.virtuals()
+        for c in ci:
+            coverage.append(cs[c])
+            lengths.append(length(virts[c]))
+
+        print '---Coverage ', np.sum(coverage)
+        print '---Coverage %', 100*np.sum(coverage)/np.float(len(qb.tracksd))
+        allcov.append(100*np.sum(coverage)/np.float(len(qb.tracksd)))
+        alllengths.append(lengths)
+    
+    print 'Mean Number of Clusters', np.mean(allc), np.std(allc)
+    print 'Mean Number of Streamlines', np.mean(alls), np.std(alls)
+    print 'Mean Number of Coverage', np.mean(allcov), np.std(allcov)
+    AL=np.array(alllengths).ravel()
+    print 'Mean Length in 100 Clusters', np.mean(AL), np.std(AL)
+
+
+
 
 if __name__ == '__main__' :
+    #qb=show_brains(3, 10000, 25, 0.005)
+    pass
     """
     clusters_sizes=[]
     for i in range(10):

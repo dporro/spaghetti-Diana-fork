@@ -104,15 +104,22 @@ class QuickBundles(object):
         for c in range(len(C)):
             C2[c]=C[keys[c]]
         self.clustering=C2
-        #self.tracksd=[downsample(track,self.pts) for track in tracks]
+        self.virts=None
     
     def remove_cluster(self,id):
         print('Not implemented yet')
         pass
     
     def remove_clusters(self,list_ids):
-        print('Not implemented yet')
-        pass
+        C=self.clustering
+        for c in list_ids:
+            del C[c]
+        C2={}
+        keys=C.keys()
+        for c in range(len(C)):
+            C2[c]=C[keys[c]]
+        self.clustering=C2
+        self.virts=None
     
     def remove_tracks(self):
         print('Not implemented yet')
@@ -123,9 +130,4 @@ class QuickBundles(object):
         pass
         
         
-    
-class pQuickBundles():
-    
-    def __init__(self):
-        pass
             
