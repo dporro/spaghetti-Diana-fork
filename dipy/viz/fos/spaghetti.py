@@ -78,17 +78,25 @@ if __name__ == '__main__':
     
     # load initial QuickBundles with threshold qb_threshold
     fpkl = directory_name+'data/subj_'+subject+'/101_32/DTI/qb_gqi_'+str(num_M_seeds)+'M_linear_'+str(qb_threshold)+'.pkl'
+    clusters_filename = directory_name+'data/subj_'+subject+'/101_32/DTI/qb_gqi_'+str(num_M_seeds)+'M_linear_'+str(qb_threshold)+'_clusters.pickle'
     try:
-        print "Loading", fpkl
-        qb = pickle.load(open(fpkl))
+        print "Loading", clusters_filename
+        clusters = pickle.load(open(clusters_filename))
     except IOError:
-        print "Computing QuickBundles."
-        qb = QuickBundles(T, qb_threshold, qb_n_points)
-        pickle.dump(qb, open(fpkl, 'w'))
-
-    tmp, representative_ids = qb.exemplars()
-    clusters = dict(zip(representative_ids, [set(qb.label2tracksids(i)) for i, rid in enumerate(representative_ids)]))
-    
+        try:
+            print "Loading", fpkl
+            qb = pickle.load(open(fpkl))
+        except IOError:
+            print "Computing QuickBundles."
+            qb = QuickBundles(T, qb_threshold, qb_n_points)
+            print "Saving", fpkl
+            pickle.dump(qb, open(fpkl, 'w'))
+            
+        tmp, representative_ids = qb.exemplars()
+        clusters = dict(zip(representative_ids, [set(qb.label2tracksids(i)) for i, rid in enumerate(representative_ids)]))
+        print "Saving", clusters_filename
+        pickle.dump(clusters, open(clusters_filename,'w'))
+            
     # create the interaction system for tracks 
     tl = StreamlineLabeler('Bundle Picker',
                            buffers, clusters)
