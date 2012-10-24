@@ -1,3 +1,18 @@
+import pyglet
+debug = True
+pyglet.options['debug_gl'] = debug
+pyglet.options['debug_gl_trace'] = debug
+pyglet.options['debug_gl_trace_args'] = debug
+pyglet.options['debug_lib'] = debug
+pyglet.options['debug_media'] = debug
+pyglet.options['debug_trace'] = debug
+pyglet.options['debug_trace_args'] = debug
+pyglet.options['debug_trace_depth'] = 1
+pyglet.options['debug_font'] = debug
+pyglet.options['debug_x11'] = debug
+pyglet.options['debug_trace'] = debug
+
+
 import numpy as np
 import nibabel as nib
 from dipy.segment.quickbundles import QuickBundles
@@ -73,7 +88,7 @@ if __name__ == '__main__':
 
     print "Create buffers for clusters."
     tmp, representative_ids = qb.exemplars()
-    clusters = dict(zip(representative_ids, [qb.label2tracksids(i) for i, rid in enumerate(representative_ids)]))
+    clusters = dict(zip(representative_ids, [set(qb.label2tracksids(i)) for i, rid in enumerate(representative_ids)]))
     
     # create the interaction system for tracks 
     tl = StreamlineLabeler('Bundle Picker',
