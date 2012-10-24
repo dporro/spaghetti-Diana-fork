@@ -1,5 +1,5 @@
 import pyglet
-debug = True
+debug = False
 pyglet.options['debug_gl'] = debug
 pyglet.options['debug_gl_trace'] = debug
 pyglet.options['debug_gl_trace_args'] = debug
@@ -42,6 +42,7 @@ if __name__ == '__main__':
     num_M_seeds = 1
     directory_name='./'
     qb_threshold = 30 # in mm
+    qb_n_points = 15
 
     #load T1 volume registered in MNI space
     t1_filename = directory_name+'data/subj_'+subject+'/MPRAGE_32/T1_flirt_out.nii.gz'
@@ -62,7 +63,7 @@ if __name__ == '__main__':
         T = dpr.read_tracks()
         dpr.close() 
     
-        # T = T[:2000]
+        # T = T[:5000]
         T = np.array(T, dtype=np.object)
 
         T = [downsample(t, 12) - np.array(data.shape[:3]) / 2. for t in T]
@@ -76,17 +77,15 @@ if __name__ == '__main__':
         buffers = compute_buffers(T, alpha=1.0, save=True, filename=buffers_filename)
     
     # load initial QuickBundles with threshold qb_threshold
-    fpkl = directory_name+'data/subj_'+subject+'/101_32/DTI/qb_gqi_3M_linear_'+str(qb_threshold)+'.pkl'
+    fpkl = directory_name+'data/subj_'+subject+'/101_32/DTI/qb_gqi_'+str(num_M_seeds)+'M_linear_'+str(qb_threshold)+'.pkl'
     try:
         print "Loading", fpkl
         qb = pickle.load(open(fpkl))
     except IOError:
         print "Computing QuickBundles."
         qb = QuickBundles(T, qb_threshold, qb_n_points)
-        pickle.dump(open(fpkl, 'w'), qb)
+        pickle.dump(qb, open(fpkl, 'w'))
 
-
-    print "Create buffers for clusters."
     tmp, representative_ids = qb.exemplars()
     clusters = dict(zip(representative_ids, [set(qb.label2tracksids(i)) for i, rid in enumerate(representative_ids)]))
     
