@@ -96,7 +96,7 @@ def compute_buffers(streamlines, alpha, save=False, filename=None):
     return tmp # streamlines_buffer, streamlines_colors, streamlines_first, streamlines_count
 
 
-def compute_buffers_representatives(buffers, representative_ids):
+def compute_buffers_representatives_old(buffers, representative_ids):
     """Compute OpenGL buffers for representatives from tractography
     buffers.
     """
@@ -109,6 +109,21 @@ def compute_buffers_representatives(buffers, representative_ids):
         
     representative_buffers = {'buffer': np.ascontiguousarray(buffers['buffer'][tmp], dtype='f4'),
                               'colors': np.ascontiguousarray(buffers['colors'][tmp], dtype='f4'),
+                              'count': np.ascontiguousarray(count),
+                              'first': np.ascontiguousarray(first)}
+    return representative_buffers
+
+
+def compute_buffers_representatives(buffers, representative_ids):
+    """Compute OpenGL buffers for representatives from tractography
+    buffers.
+    """
+    print "Creating buffers for representatives."
+    count = buffers['count'][representative_ids].astype('i4')
+    first = buffers['first'][representative_ids].astype('i4')
+        
+    representative_buffers = {'buffer': buffers['buffer'],
+                              'colors': buffers['colors'],
                               'count': np.ascontiguousarray(count),
                               'first': np.ascontiguousarray(first)}
     return representative_buffers
@@ -168,9 +183,11 @@ class StreamlineLabeler(Actor):
 
         self.manipulator = Manipulator(self.clusters, clustering_function=None)
 
-        self.expand = False
         self.hide_representatives = False
-
+        self.expand = False        
+        # self.streamlines_visualized_first = self.streamlines_first
+        # self.streamlines_visualized_count = self.streamlines_count
+        
         self.representatives_line_width = representatives_line_width
         self.streamlines_line_width = streamlines_line_width
 
