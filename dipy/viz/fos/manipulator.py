@@ -26,13 +26,13 @@ class Manipulator(object):
     capabilities and other amenities.
     """
     
-    def __init__(self, initial_clusters, clustering):
+    def __init__(self, initial_clusters, clustering_function):
         """Initialize the object.
         """
         self.initial_clusters = copy.deepcopy(initial_clusters)
         self.history = []
         self.clusters_reset(initial_clusters)
-        self.clustering = clustering
+        self.clustering_function = clustering_function
         
 
     def clusters_reset(self, clusters):
@@ -98,7 +98,7 @@ class Manipulator(object):
         streamline_ids_new = reduce(set.union, self.clusters.values())
         # sanity check:
         assert(clusters_number <= len(streamline_ids_new))
-        clusters_new = self.clustering(streamline_ids_new, clusters_number)
+        clusters_new = self.clustering_function(streamline_ids_new, clusters_number)
         # sanity check:
         assert(streamline_ids_new == reduce(set.union, clusters_new.values()))
         self.history.append('recluster('+str(clusters_number)+')')
@@ -130,7 +130,7 @@ class Manipulator(object):
         """Create a Manipulator object by replaying the history of
         self starting from self.initial_clusters.
         """
-        m = Manipulator(self.initial_clusters, self.clustering)
+        m = Manipulator(self.initial_clusters, self.clustering_function)
         # skip the first action in the history because already done
         # during __init__():
         c = ['m.'+h for h in self.history[1:until]]
