@@ -77,11 +77,11 @@ def compute_buffers(streamlines, alpha, save=False, filename=None):
     streamlines_colors = np.ascontiguousarray(compute_colors(streamlines, alpha))
     streamlines_count = np.ascontiguousarray(np.array([len(curve) for curve in streamlines],dtype='i4'))
     streamlines_first = np.ascontiguousarray(np.concatenate([[0],np.cumsum(streamlines_count)[:-1]]).astype('i4'))
+    tmp = {'buffer': streamlines_buffer,
+           'colors': streamlines_colors,
+           'count': streamlines_count,
+           'first': streamlines_first}
     if save:
-        tmp = {'buffer': streamlines_buffer,
-               'colors': streamlines_colors,
-               'count': streamlines_count,
-               'first': streamlines_first}
         print "saving buffers to", filename
         np.savez_compressed(filename, **tmp)
         # This requires much more storage:
@@ -93,15 +93,24 @@ def compute_buffers(streamlines, alpha, save=False, filename=None):
         # extremely slow.
         # Moreover the npy/npz format takes care of endianess and
         # other archicetural tricky issues.
-    return streamlines_buffer, streamlines_colors, streamlines_first, streamlines_count
+    return tmp # streamlines_buffer, streamlines_colors, streamlines_first, streamlines_count
 
 
 def compute_buffers_representatives(buffers, representative_ids):
+    """Compute OpenGL buffers for representatives from tractography
+    buffers.
+    """
     print "Creating buffers for representatives."
-    representative_buffers = {'buffer': np.ascontiguousarray(buffers['buffer'][representative_ids]),
-                              'colors': np.ascontiguousarray(buffers['colors'][representative_ids]),
-                              'count': np.ascontiguousarray(buffers['count'][representative_ids])}
-    representative_buffers['first'] = np.ascontiguousarray(np.concatenate([[0], np.cumsum(representative_buffers['count'][:-1])]))
+    count = buffers['count'][representative_ids].astype('i4')
+    first = np.concatenate([[0], np.cumsum(count).astype('i4')])
+    tmp = np.zeros(buffers['buffer'].shape[0], dtype=np.bool)
+    for i, fid in enumerate(first):
+        tmp[fid:fid+buffers['count'][i]] = True
+        
+    representative_buffers = {'buffer': np.ascontiguousarray(buffers['buffer'][tmp], dtype='f4'),
+                              'colors': np.ascontiguousarray(buffers['colors'][tmp], dtype='f4'),
+                              'count': np.ascontiguousarray(count),
+                              'first': np.ascontiguousarray(first)}
     return representative_buffers
 
 
@@ -136,13 +145,13 @@ class StreamlineLabeler(Actor):
         self.mouse_y=None
 
         self.clusters = clusters
+        self.representative_ids = self.clusters.keys()
 
         self.representatives_alpha = representatives_alpha
 
         # representative buffers:
         if representative_buffers is None:
-            representative_ids = self.clusters.keys()
-            representative_buffers = compute_buffers_representatives(buffers, representative_ids)
+            representative_buffers = compute_buffers_representatives(buffers, self.representative_ids)
 
         self.representatives_buffer = representative_buffers['buffer']
         self.representatives_colors = representative_buffers['colors']
