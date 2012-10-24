@@ -7,6 +7,9 @@ from dipy.viz.fos.guillotine import Guillotine
 from dipy.io.dpy import Dpy
 from dipy.tracking.metrics import downsample
 from fos import Scene
+import pickle
+from streamshow import compute_buffers, compute_buffers_representatives
+
 
 def rotation_matrix(axis, theta_degree):
     theta = 1. * theta_degree * np.pi / 180.
@@ -20,40 +23,64 @@ def rotation_matrix(axis, theta_degree):
 
 if __name__ == '__main__':
     
-    #load T1 volume registered in MNI space 
-    dname='/home/eg309/Devel/fos_legacy/applications/'
-    img = nib.load(dname+'data/subj_05/MPRAGE_32/T1_flirt_out.nii.gz')
+    subject = '05'
+    num_M_seeds = 1
+    directory_name='./'
+    qb_threshold = 30 # in mm
+
+    #load T1 volume registered in MNI space
+    t1_filename = directory_name+'data/subj_'+subject+'/MPRAGE_32/T1_flirt_out.nii.gz'
+    print "Loading", t1_filename
+    img = nib.load(t1_filename)
     data = img.get_data()
     affine = img.get_affine()
 
-    #load the tracks registered in MNI space 
-    fdpyw = dname+'data/subj_05/101_32/DTI/tracks_gqi_1M_linear.dpy'    
-    dpr = Dpy(fdpyw, 'r')
-    T = dpr.read_tracks()
-    dpr.close() 
+    #load the tracks registered in MNI space
+    tracks_basenane = directory_name+'data/subj_'+subject+'/101_32/DTI/tracks_gqi_'+str(num_M_seeds)+'M_linear'
+    buffers_filename = tracks_basenane+'_buffers.npz'
+    try:
+        print "Loading", buffers_filename
+        buffers = np.load(buffers_filename)
+    except IOError:
+        fdpyw = tracks_basenane+'.dpy'    
+        dpr = Dpy(fdpyw, 'r')
+        T = dpr.read_tracks()
+        dpr.close() 
     
-    T = T[:2000]
+        # T = T[:2000]
+        T = np.array(T, dtype=np.object)
 
-    T = [downsample(t, 12) - np.array(data.shape[:3]) / 2. for t in T]
-    axis = np.array([1, 0, 0])
-    theta = - 90. 
-    T = np.dot(T,rotation_matrix(axis, theta))
-    axis = np.array([0, 1, 0])
-    theta = 180. 
-    T = np.dot(T, rotation_matrix(axis, theta))
+        T = [downsample(t, 12) - np.array(data.shape[:3]) / 2. for t in T]
+        axis = np.array([1, 0, 0])
+        theta = - 90. 
+        T = np.dot(T,rotation_matrix(axis, theta))
+        axis = np.array([0, 1, 0])
+        theta = 180. 
+        T = np.dot(T, rotation_matrix(axis, theta))
+
+        buffers = compute_buffers(T, alpha=1.0, save=True, filename=buffers_filename)
     
-    #load initial QuickBundles with threshold 30mm
-    #fpkl = dname+'data/subj_05/101_32/DTI/qb_gqi_1M_linear_30.pkl'
-    qb=QuickBundles(T, 30., 12)
-    #save_pickle(fpkl,qb)
-    #qb=load_pickle(fpkl)
+    # load initial QuickBundles with threshold qb_threshold
+    fpkl = directory_name+'data/subj_'+subject+'/101_32/DTI/qb_gqi_3M_linear_'+str(qb_threshold)+'.pkl'
+    try:
+        print "Loading", fpkl
+        qb = pickle.load(open(fpkl))
+    except IOError:
+        print "Computing QuickBundles."
+        qb = QuickBundles(T, qb_threshold, qb_n_points)
+        pickle.dump(open(fpkl, 'w'), qb)
 
-    #create the interaction system for tracks 
-    tl = StreamlineLabeler('Bundle Picker', 
-                        qb,qb.downsampled_tracks(), 
-                        vol_shape=None, 
-                        tracks_alpha=1)   
 
+    print "Create buffers for clusters."
+    tmp, representative_ids = qb.exemplars()
+    clusters = dict(zip(representative_ids, [qb.label2tracksids(i) for i, rid in enumerate(representative_ids)]))
+    representative_buffers = compute_buffers_representatives(buffers, representative_ids)
+    
+    # create the interaction system for tracks 
+    tl = StreamlineLabeler('Bundle Picker',
+                           buffers, clusters,
+                           representative_buffers)
+    
     title = 'Streamline Interaction and Segmentation'
     w = Window(caption = title, 
                 width = 1200, 
