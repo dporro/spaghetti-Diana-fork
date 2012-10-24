@@ -17,21 +17,24 @@ from dipy.viz.colormap import orient2rgb
 from dipy.tracking.metrics import downsample
 from dipy.tracking.vox2track import track_counts
 
-#other
+# other
 import copy 
 import cPickle as pickle
 
-#trick for the bug of pyglet multiarrays
+# trick for the bug of pyglet multiarrays
 glib = load_library('GL')
 
-#Tk dialogs
+# Tk dialogs
 import Tkinter, tkFileDialog
 
-#Pyside for windowing
+# Pyside for windowing
 from PySide.QtCore import Qt
 
+# Interaction Logic:
+from manipulator import Manipulator
 
-question_message="""
+
+question_message = """
 >>>>Track Labeler
 P : select/unselect the representative track.
 E : expand/collapse the selected streamlines 
@@ -136,6 +139,7 @@ class StreamlineLabeler(Actor):
 
         self.representatives_alpha = representatives_alpha
 
+        # representative buffers:
         if representative_buffers is None:
             representative_ids = self.clusters.keys()
             representative_buffers = compute_buffers_representatives(buffers, representative_ids)
@@ -145,7 +149,7 @@ class StreamlineLabeler(Actor):
         self.representatives_first = representative_buffers['first']
         self.representatives_count = representative_buffers['count']
 
-        # full tractography 
+        # full tractography buffers:
         self.streamlines_buffer = buffers['buffer']
         self.streamlines_colors = buffers['colors']
         self.streamlines_first = buffers['first']
@@ -153,10 +157,18 @@ class StreamlineLabeler(Actor):
 
         print('MBytes %f' % (self.streamlines_buffer.nbytes/2.**20,))
 
+        self.manipulator = Manipulator(self.clusters, clustering_function=None)
+
+        self.expand = False
+        self.hide_representatives = False
+
+        self.representatives_line_width = representatives_line_width
+        self.streamlines_line_width = streamlines_line_width
+
+        self.vertices = self.streamlines_buffer # this is apparently requested by Actor
+
         # #buffer for selected virtual streamlines
         # self.selected = []
-        # self.representatives_line_width = representatives_line_width
-        # self.streamlines_line_width = streamlines_line_width
         # self.old_color = {}
         # self.hide_representatives = False
         # self.expand = False
@@ -190,6 +202,7 @@ class StreamlineLabeler(Actor):
         glHint(GL_LINE_SMOOTH_HINT, GL_NICEST)
         glEnableClientState(GL_VERTEX_ARRAY)
         glEnableClientState(GL_COLOR_ARRAY)
+        # plot representatives if necessary:
         if not self.hide_representatives:
             glVertexPointer(3,GL_FLOAT,0,self.representatives_buffer.ctypes.data)
             glColorPointer(4,GL_FLOAT,0,self.representatives_colors.ctypes.data)
@@ -200,9 +213,10 @@ class StreamlineLabeler(Actor):
             glib.glMultiDrawArrays(GL_LINE_STRIP, 
                                    self.representatives_first.ctypes.data, 
                                    self.representatives_count.ctypes.data, 
-                                   len(self.representatives))
+                                   len(self.representatives_first))
             glPopMatrix()
-        # reals:
+
+        # plot tractography if necessary:
         if self.expand and self.streamlines_visualized_first.size > 0:
             glVertexPointer(3,GL_FLOAT,0,self.streamlines_buffer.ctypes.data)
             glColorPointer(4,GL_FLOAT,0,self.streamlines_colors.ctypes.data)
@@ -211,7 +225,7 @@ class StreamlineLabeler(Actor):
             glib.glMultiDrawArrays(GL_LINE_STRIP, 
                                     self.streamlines_visualized_first.ctypes.data, 
                                     self.streamlines_visualized_count.ctypes.data, 
-                                    len(self.streamlines_visualized_count))
+                                    len(self.streamlines_visualized_first))
             glPopMatrix()
         glDisableClientState(GL_COLOR_ARRAY)
         glDisableClientState(GL_VERTEX_ARRAY)      
