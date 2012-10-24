@@ -94,6 +94,7 @@ def compute_buffers(streamlines, alpha, save=False, filename=None):
 
 
 def compute_buffers_representatives(buffers, representative_ids):
+    print "Creating buffers for representatives."
     representative_buffers = {'buffer': np.ascontiguousarray(buffers['buffer'][representative_ids]),
                               'colors': np.ascontiguousarray(buffers['colors'][representative_ids]),
                               'count': np.ascontiguousarray(buffers['count'][representative_ids])}
@@ -118,7 +119,7 @@ def compute_colors(streamlines, alpha):
 
 class StreamlineLabeler(Actor):   
     
-    def __init__(self, name, buffers, clusters, representative_buffers, colors = None, vol_shape=None, representatives_line_width=5.0, streamlines_line_width=2.0, representatives_alpha=1.0, streamlines_alpha=1.0, affine=None, verbose=False):
+    def __init__(self, name, buffers, clusters, representative_buffers=None, colors = None, vol_shape=None, representatives_line_width=5.0, streamlines_line_width=2.0, representatives_alpha=1.0, streamlines_alpha=1.0, affine=None, verbose=False):
         """StreamlineLabeler is meant to explore and select subsets of the
         streamlines. The exploration occurs through QuickBundles (qb) in
         order to simplify the scene.
@@ -134,6 +135,10 @@ class StreamlineLabeler(Actor):
         self.clusters = clusters
 
         self.representatives_alpha = representatives_alpha
+
+        if representative_buffers is None:
+            representative_ids = self.clusters.keys()
+            representative_buffers = compute_buffers_representatives(buffers, representative_ids)
 
         self.representatives_buffer = representative_buffers['buffer']
         self.representatives_colors = representative_buffers['colors']

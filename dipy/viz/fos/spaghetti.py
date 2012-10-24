@@ -74,12 +74,10 @@ if __name__ == '__main__':
     print "Create buffers for clusters."
     tmp, representative_ids = qb.exemplars()
     clusters = dict(zip(representative_ids, [qb.label2tracksids(i) for i, rid in enumerate(representative_ids)]))
-    representative_buffers = compute_buffers_representatives(buffers, representative_ids)
     
     # create the interaction system for tracks 
     tl = StreamlineLabeler('Bundle Picker',
-                           buffers, clusters,
-                           representative_buffers)
+                           buffers, clusters)
     
     title = 'Streamline Interaction and Segmentation'
     w = Window(caption = title, 
