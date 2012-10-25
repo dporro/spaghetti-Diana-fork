@@ -321,6 +321,10 @@ class StreamlineLabeler(Actor, Manipulator):
             print 'I: invert selection of representatives.'
             self.invert()
 
+        elif symbol == Qt.Key_H:
+            print 'H: Hide/show representatives.'
+            self.hide_representatives = not self.hide_representatives       
+
 
     def get_pointed_representative(self, min_dist=1e-3):
         """Compute the id of the closest streamline to the mouse pointer.
