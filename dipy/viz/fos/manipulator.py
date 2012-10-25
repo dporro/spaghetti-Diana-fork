@@ -45,7 +45,7 @@ class Manipulator(object):
         self.representative_ids = set(self.clusters.keys())
         self.selected = set()
         self.expanded = set()
-        self.show_rep = True
+        self.show_representatives = True
         self.history.append('clusters_reset('+str(clusters)+')')
     
 
@@ -122,6 +122,23 @@ class Manipulator(object):
             self.select_all()
 
 
+    def remove_selected(self):
+        """Remove all clusters whose representative is selected.
+        """
+        # TODO
+        # assert(len(self.selected)>0)
+        # clusters = {}
+        # for representative in self.selected:
+        #     clusters[representative] = self.clusters[representative]
+        # self.clusters = clusters
+        self.history.append('remove_selected()')
+        self.remove_selected_action()
+
+
+    def remove_selected_action(self):
+        raise NotImplementedError
+        
+
     def remove_unselected(self):
         """Remove all clusters whose representative is not selected.
         """
@@ -131,6 +148,11 @@ class Manipulator(object):
             clusters[representative] = self.clusters[representative]
         self.clusters = clusters
         self.history.append('remove_unselected()')
+        self.remove_unselected_action()
+
+
+    def remove_unselected_action(self):
+        raise NotImplementedError
         
 
     def recluster(self, clusters_number):
@@ -161,14 +183,14 @@ class Manipulator(object):
     def show_representatives(self):
         """Show representatives.
         """
-        self.show_rep = True
+        self.show_representatives = True
         self.history.append('show_representatives()')
         
 
     def hide_representatives(self):
         """Do not show representatives.
         """
-        self.show_rep = False
+        self.show_representatives = False
         self.history.append('hide_representatives()')
 
 
@@ -191,7 +213,7 @@ class Manipulator(object):
         string += "\n"
         string += "Selected: " + str(self.selected)
         string += "\n"
-        string += "Show Representatives: " + str(self.show_rep)
+        string += "Show Representatives: " + str(self.show_representatives)
         string += "\n"
         string += "Initial Clusters: " + str(self.initial_clusters)
         string += "\n"
