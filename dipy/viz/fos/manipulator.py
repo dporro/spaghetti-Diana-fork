@@ -3,6 +3,7 @@ import random
 import copy
 import code
 
+
 def clustering(streamline_ids, clusters_number, seed=0):
     """Create fake clustering just playing randomly with streamline
     ids. For testing purpose.
@@ -55,6 +56,13 @@ class Manipulator(object):
         assert(representative_id not in self.selected)
         self.selected.add(representative_id)
         self.history.append('select('+str(representative_id)+')')
+        self.select_action(representative_id)
+
+
+    def select_action(self, representative_id):
+        """This is the actual action to perform in the application.
+        """
+        raise NotImplementedError
 
 
     def unselect(self, representative_id):
@@ -64,6 +72,22 @@ class Manipulator(object):
         assert(representative_id in self.selected)
         self.selected.remove(representative_id)
         self.history.append('unselect('+str(representative_id)+')')
+        self.unselect_action(representative_id)
+        
+
+    def unselect_action(self, representative_id):
+        """This is the actual action to perform in the application.
+        """
+        raise NotImplementedError
+
+
+    def select_toggle(self, representative_id):
+        """Toggle for dispatching select or unselect.
+        """
+        if representative_id not in self.selected:
+            self.select(representative_id)
+        else:
+            self.unselect(representative_id)
         
 
     def select_all(self):
