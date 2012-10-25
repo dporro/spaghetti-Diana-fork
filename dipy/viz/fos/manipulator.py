@@ -98,11 +98,28 @@ class Manipulator(object):
         # later steps.
         self.selected = set(copy.deepcopy(self.representative_ids))
         self.history.append('select_all()')
+        self.select_all_action()
+
+
+    def select_all_action(self):
+        raise NotImplementedError
         
 
     def unselect_all(self):
         self.selected = set()
         self.history.append('unselect_all()')
+        self.unselect_all_action()
+        
+
+    def unselect_all_action(self):
+        raise NotImplementedError
+        
+
+    def select_all_toggle(self):
+        if self.selected == self.representative_ids:
+            self.unselect_all()
+        else:
+            self.select_all()
 
 
     def remove_unselected(self):
@@ -134,6 +151,11 @@ class Manipulator(object):
         """
         self.selected = self.representatives.intersection(self.selected)
         self.history.append('invert()')
+        self.invert_action()
+
+
+    def invert_action(self):
+        raise NotImplementedError
 
 
     def show_representatives(self):

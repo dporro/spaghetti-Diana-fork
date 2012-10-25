@@ -173,14 +173,16 @@ class StreamlineLabeler(Actor, Manipulator):
 
         self.clusters = clusters
         Manipulator.__init__(self, initial_clusters=clusters, clustering_function=None)
-        
-        self.representative_ids = self.clusters.keys()
+
+        # We keep the representative_ids as list to preserve order,
+        # which is necessary for presentation purposes:
+        self.representative_ids_ordered = self.clusters.keys()
 
         self.representatives_alpha = representatives_alpha
 
         # representative buffers:
         if representative_buffers is None:
-            representative_buffers = compute_buffers_representatives(buffers, self.representative_ids)
+            representative_buffers = compute_buffers_representatives(buffers, self.representative_ids_ordered)
 
         self.representatives_buffer = representative_buffers['buffer']
         self.representatives_colors = representative_buffers['colors']
@@ -206,6 +208,10 @@ class StreamlineLabeler(Actor, Manipulator):
         self.streamlines_line_width = streamlines_line_width
 
         self.vertices = self.streamlines_buffer # this is apparently requested by Actor
+
+        self.color_storage = {}
+        # This is the color of a selected representative.
+        self.color_selected = np.array([1.0, 1.0, 1.0, 1.0], dtype='f4')
 
         # #buffer for selected virtual streamlines
         # self.selected = []
@@ -306,6 +312,15 @@ class StreamlineLabeler(Actor, Manipulator):
             rid = self.get_pointed_representative()
             print 'P : pick the representative pointed by the mouse =', rid
             self.select_toggle(rid)
+
+        elif symbol == Qt.Key_A:
+            print 'A: select all representatives.'
+            self.select_all_toggle()
+
+        elif symbol == Qt.key_I:
+            print 'I: invert selection of representatives.'
+            pass
+            
         return
 
 
@@ -320,17 +335,52 @@ class StreamlineLabeler(Actor, Manipulator):
         tmp = np.array([cll.mindistance_segment2track_info(near, far, xyz) \
                         for xyz in self.representatives])
         line_distance, screen_distance = tmp[:,0], tmp[:,1]
-        return self.representative_ids[np.argmin(line_distance + screen_distance)]
-
+        return self.representative_ids_ordered[np.argmin(line_distance + screen_distance)]
 
 
     def select_action(self, representative_id):
+        """Steps for visualizing a selected representative.
+        """
         print "select_action:", representative_id
-        pass
+        rid_position = self.representative_ids_ordered.index(representative_id)
+        first = self.representatives_first[rid_position]
+        count = self.representatives_count[rid_position]
+        # this check is needed to let select_all_action() work,
+        # otherwise a previously selected representative would be
+        # stored as white and never get its original color back.
+        if representative_id not in self.color_storage:
+            self.color_storage[representative_id] = self.representatives_colors[first:first+count].copy()
+        self.representatives_colors[first:first+count] = self.color_selected
+
 
     def unselect_action(self, representative_id):
+        """Steps for visualizing an unselected representative.
+        """
         print "unselect_action:", representative_id
-        pass
+        rid_position = self.representative_ids_ordered.index(representative_id)
+        first = self.representatives_first[rid_position]
+        count = self.representatives_count[rid_position]
+        self.representatives_colors[first:first+count] = self.color_storage[representative_id]
+        self.color_storage.pop(representative_id)
+
+
+    def select_all_action(self):
+        print "A: select all representatives."
+        for rid in self.representative_ids_ordered:
+            self.select_action(rid)
+
+    def unselect_all_action(self):
+        print "A: unselect all representatives."
+        for rid in self.representative_ids_ordered:
+            self.unselect_action(rid)
+            
+
+
+
+
+
+
+
 
 
     def select_streamline(self, ids):
