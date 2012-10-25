@@ -67,6 +67,21 @@ def streamline2rgb(streamline):
     return orient2rgb(streamline[0] - streamline[-1])
 
 
+def compute_colors(streamlines, alpha):
+    """Compute colors for a list of streamlines.
+    """
+    # assert(type(streamlines) == type([]))
+    tot_vertices = np.sum([len(curve) for curve in streamlines])
+    color = np.empty((tot_vertices,4), dtype='f4')
+    counter = 0
+    for curve in streamlines:
+        color[counter:counter+len(curve),:3] = streamline2rgb(curve).astype('f4')
+        counter += len(curve)
+
+    color[:,3] = alpha
+    return color
+
+
 def compute_buffers(streamlines, alpha, save=False, filename=None):
     """Compute buffers for GL.
     """
@@ -129,29 +144,26 @@ def compute_buffers_representatives(buffers, representative_ids):
     return representative_buffers
 
 
-def compute_colors(streamlines, alpha):
-    """Compute colors for a list of streamlines.
+def buffer2coordinates(buffers):
+    """Extract an array of streamlines' coordinates from representative_buffers.
+
+    This is meant mainly when the input 'buffers' is 'representative_buffers'.
+    """    
+    return np.array([buffers['buffer'][buffers['first'][i]:buffers['first'][i]+buffers['count'][i]] \
+                     for i in range(len(buffers['first']))], dtype=np.object)
+
+
+
+class StreamlineLabeler(Actor, Manipulator):   
+    """The Labeler for streamlines.
     """
-    # assert(type(streamlines) == type([]))
-    tot_vertices = np.sum([len(curve) for curve in streamlines])
-    color = np.empty((tot_vertices,4), dtype='f4')
-    counter = 0
-    for curve in streamlines:
-        color[counter:counter+len(curve),:3] = streamline2rgb(curve).astype('f4')
-        counter += len(curve)
-
-    color[:,3] = alpha
-    return color
-
-
-class StreamlineLabeler(Actor):   
-    
     def __init__(self, name, buffers, clusters, representative_buffers=None, colors = None, vol_shape=None, representatives_line_width=5.0, streamlines_line_width=2.0, representatives_alpha=1.0, streamlines_alpha=1.0, affine=None, verbose=False):
         """StreamlineLabeler is meant to explore and select subsets of the
         streamlines. The exploration occurs through QuickBundles (qb) in
         order to simplify the scene.
         """
-        super(StreamlineLabeler, self).__init__(name)
+        # super(StreamlineLabeler, self).__init__(name)
+        Actor.__init__(self, name) # direct call of the __init__ seems better in case of multiple inheritance
 
         if affine is None: self.affine = np.eye(4, dtype = np.float32)
         else: self.affine = affine      
@@ -160,6 +172,8 @@ class StreamlineLabeler(Actor):
         self.mouse_y=None
 
         self.clusters = clusters
+        Manipulator.__init__(self, initial_clusters=clusters, clustering_function=None)
+        
         self.representative_ids = self.clusters.keys()
 
         self.representatives_alpha = representatives_alpha
@@ -173,6 +187,8 @@ class StreamlineLabeler(Actor):
         self.representatives_first = representative_buffers['first']
         self.representatives_count = representative_buffers['count']
 
+        self.representatives = buffer2coordinates(representative_buffers)
+
         # full tractography buffers:
         self.streamlines_buffer = buffers['buffer']
         self.streamlines_colors = buffers['colors']
@@ -180,8 +196,6 @@ class StreamlineLabeler(Actor):
         self.streamlines_count = buffers['count']
 
         print('MBytes %f' % (self.streamlines_buffer.nbytes/2.**20,))
-
-        self.manipulator = Manipulator(self.clusters, clustering_function=None)
 
         self.hide_representatives = False
         self.expand = False        
@@ -210,8 +224,6 @@ class StreamlineLabeler(Actor):
 
         # else:
         #     self.representatives_shifted = None
-
-
 
 
     def draw(self):
@@ -261,17 +273,65 @@ class StreamlineLabeler(Actor):
         glDisable(GL_LINE_SMOOTH)
 
 
-    def process_mouse_position(self,x,y):
-        self.mouse_x=x
-        self.mouse_y=y
+    def process_messages(self,messages):
+        msg=messages['key_pressed']
+        #print 'Processing messages in actor', self.name, 
+        #' key_press message ', msg
+        if msg!=None:
+            self.process_keys(msg,None)
+        msg=messages['mouse_position']            
+        #print 'Processing messages in actor', self.name, 
+        #' mouse_pos message ', msg
+        if msg!=None:
+            self.process_mouse_position(*msg)
 
 
-    def process_pickray(self,near,far):
+    def process_mouse_position(self, x, y):
+        self.mouse_x = x
+        self.mouse_y = y
+
+
+    # def process_pickray(self,near,far):
+    #     pass
+
+
+    # def update(self,dt):
+    #     pass
+
+
+    def process_keys(self, symbol, modifiers):
+        """Bind actions to key press.
+        """
+        if symbol == Qt.Key_P:     
+            rid = self.get_pointed_representative()
+            print 'P : pick the representative pointed by the mouse =', rid
+            self.select_toggle(rid)
+        return
+
+
+    def get_pointed_representative(self, min_dist=1e-3):
+        """Compute the id of the closest streamline to the mouse pointer.
+        """
+        x, y = self.mouse_x, self.mouse_y
+        # Define two points in model space from mouse+screen(=0) position and mouse+horizon(=1) position
+        near = screen_to_model(x, y, 0)
+        far = screen_to_model(x, y, 1)
+        # Compute distance of representatives from screen and from the line defined by the two points above
+        tmp = np.array([cll.mindistance_segment2track_info(near, far, xyz) \
+                        for xyz in self.representatives])
+        line_distance, screen_distance = tmp[:,0], tmp[:,1]
+        return self.representative_ids[np.argmin(line_distance + screen_distance)]
+
+
+
+    def select_action(self, representative_id):
+        print "select_action:", representative_id
         pass
 
-
-    def update(self,dt):
+    def unselect_action(self, representative_id):
+        print "unselect_action:", representative_id
         pass
+
 
     def select_streamline(self, ids):
         """Do visual selection of given representatives.
@@ -316,19 +376,7 @@ class StreamlineLabeler(Actor):
         self.selected=[]
         self.select_streamline(tmp_selected)
 
-    def process_messages(self,messages):
-        msg=messages['key_pressed']
-        #print 'Processing messages in actor', self.name, 
-        #' key_press message ', msg
-        if msg!=None:
-            self.process_keys(msg,None)
-        msg=messages['mouse_position']            
-        #print 'Processing messages in actor', self.name, 
-        #' mouse_pos message ', msg
-        if msg!=None:
-            self.process_mouse_position(*msg)
-
-    def process_keys(self,symbol,modifiers):
+    def process_keys_old(self,symbol,modifiers):
         """Bind actions to key press.
         """
         prev_selected = copy.copy(self.selected)
@@ -472,29 +520,6 @@ class StreamlineLabeler(Actor):
         else:
             self.representatives_shifted = None
 
-    def picking_representatives(self, symbol,modifiers, min_dist=1e-3):
-        """Compute the id of the closest streamline to the mouse pointer.
-        """
-        x, y = self.mouse_x, self.mouse_y
-        # Define two points in model space from mouse+screen(=0) position and mouse+horizon(=1) position
-        near = screen_to_model(x, y, 0)
-        far = screen_to_model(x, y, 1)
-
-        #print 'peak representatives ', near, far, x, y
-        # Compute distance of representatives from screen and from the line defined by the two points above
-        tmp = np.array([cll.mindistance_segment2track_info(near, far, xyz) \
-                        for xyz in self.representatives])
-        line_distance, screen_distance = tmp[:,0], tmp[:,1]
-        if False: # basic algoritm:
-            # Among the representatives within a range to the line (i.e. < min_dist) return the closest to the screen:
-            closest_to_line_idx = np.argsort(line_distance)
-            closest_to_line_thresholded_bool = line_distance[closest_to_line_idx] < min_dist
-            if (closest_to_line_thresholded_bool).any():
-                return closest_to_line_idx[np.argmin(screen_distance[closest_to_line_thresholded_bool])]
-            else:
-                return closest_to_line_idx[0]
-        else: # simpler and apparently more effective algorithm:
-            return np.argmin(line_distance + screen_distance)
 
     def maskout_streamlines(self):
         """ retrieve ids of representatives which go through the mask
