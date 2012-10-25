@@ -149,7 +149,7 @@ class Manipulator(object):
     def invert(self):
         """Invert the selection of representatives.
         """
-        self.selected = self.representatives.intersection(self.selected)
+        self.selected = self.representative_ids.difference(self.selected)
         self.history.append('invert()')
         self.invert_action()
 
