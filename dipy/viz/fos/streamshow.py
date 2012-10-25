@@ -317,11 +317,9 @@ class StreamlineLabeler(Actor, Manipulator):
             print 'A: select all representatives.'
             self.select_all_toggle()
 
-        elif symbol == Qt.key_I:
+        elif symbol == Qt.Key_I:
             print 'I: invert selection of representatives.'
-            pass
-            
-        return
+            self.invert()
 
 
     def get_pointed_representative(self, min_dist=1e-3):
@@ -375,7 +373,13 @@ class StreamlineLabeler(Actor, Manipulator):
             self.unselect_action(rid)
             
 
-
+    def invert_action(self):
+        print "I: invert selection of all representatives."
+        for rid in self.representative_ids_ordered:
+            if rid in self.selected:
+                self.select_action(rid)
+            else:
+                self.unselect_action(rid)
 
 
 
