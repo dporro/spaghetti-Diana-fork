@@ -125,12 +125,10 @@ class Manipulator(object):
     def remove_selected(self):
         """Remove all clusters whose representative is selected.
         """
-        # TODO
-        # assert(len(self.selected)>0)
-        # clusters = {}
-        # for representative in self.selected:
-        #     clusters[representative] = self.clusters[representative]
-        # self.clusters = clusters
+        clusters = {}
+        for representative in set(self.representative_ids).difference(self.selected):
+            clusters[representative] = self.clusters[representative]
+        self.clusters_reset(clusters)
         self.history.append('remove_selected()')
         self.remove_selected_action()
 
@@ -142,11 +140,10 @@ class Manipulator(object):
     def remove_unselected(self):
         """Remove all clusters whose representative is not selected.
         """
-        assert(len(self.selected)>0)
         clusters = {}
         for representative in self.selected:
             clusters[representative] = self.clusters[representative]
-        self.clusters = clusters
+        self.clusters_reset(clusters)
         self.history.append('remove_unselected()')
         self.remove_unselected_action()
 
@@ -193,6 +190,18 @@ class Manipulator(object):
         self.show_representatives = False
         self.history.append('hide_representatives()')
 
+
+    def expand_collapse_selected(self):
+        """Toggle expand/collapse status of selected representatives.
+        """
+        self.expand = not self.expand
+        self.history.append('expand_collapse_selected()')
+        self.expand_collapse_selected_action()
+
+
+    def expand_collapse_selected_action(self):
+        raise NotImplementedError
+        
 
     def replay_history(self, until=None):
         """Create a Manipulator object by replaying the history of
