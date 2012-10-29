@@ -146,13 +146,13 @@ def compute_buffers_representatives(buffers, representative_ids):
     return representative_buffers
 
 
-def buffer2coordinates(buffers):
+def buffer2coordinates(buffer, first, count):
     """Extract an array of streamlines' coordinates from representative_buffers.
 
     This is meant mainly when the input 'buffers' is 'representative_buffers'.
     """    
-    return np.array([buffers['buffer'][buffers['first'][i]:buffers['first'][i]+buffers['count'][i]] \
-                     for i in range(len(buffers['first']))], dtype=np.object)
+    return np.array([buffer[first[i]:first[i]+count[i]] \
+                     for i in range(len(first))], dtype=np.object)
 
 
 
@@ -191,7 +191,9 @@ class StreamlineLabeler(Actor, Manipulator):
         self.representatives_first = representative_buffers['first']
         self.representatives_count = representative_buffers['count']
 
-        self.representatives = buffer2coordinates(representative_buffers)
+        self.representatives = buffer2coordinates(self.representatives_buffer,
+                                                  self.representatives_first,
+                                                  self.representatives_count)
 
         # full tractography buffers:
         self.streamlines_buffer = buffers['buffer']
@@ -369,6 +371,7 @@ class StreamlineLabeler(Actor, Manipulator):
         # stored as white and never get its original color back.
         if representative_id not in self.color_storage:
             self.color_storage[representative_id] = self.representatives_colors[first:first+count].copy() # .copy() is mandatory here otherwise that memory is changed by the next line!
+
         self.representatives_colors[first:first+count] = self.color_selected
 
 
@@ -379,8 +382,9 @@ class StreamlineLabeler(Actor, Manipulator):
         rid_position = self.representative_ids_ordered.index(representative_id)
         first = self.representatives_first[rid_position]
         count = self.representatives_count[rid_position]
-        self.representatives_colors[first:first+count] = self.color_storage[representative_id]
-        self.color_storage.pop(representative_id)
+        if representative_id in self.color_storage: # check to allow unselect_all_action()
+            self.representatives_colors[first:first+count] = self.color_storage[representative_id]
+            self.color_storage.pop(representative_id)
 
 
     def select_all_action(self):
@@ -408,17 +412,27 @@ class StreamlineLabeler(Actor, Manipulator):
         print "E: Expand/collapse streamlines of selected representatives."
         if self.expand:
             print "Expand."
-            selected_streamlines_ids = list(reduce(chain, [self.clusters[rid] for rid in self.selected]))
-            self.streamlines_visualized_first = np.ascontiguousarray(self.streamlines_first[selected_streamlines_ids], dtype='i4')
-            self.streamlines_visualized_count = np.ascontiguousarray(self.streamlines_count[selected_streamlines_ids], dtype='i4')
+            if len(self.selected)>0:
+                selected_streamlines_ids = list(reduce(chain, [self.clusters[rid] for rid in self.selected]))
+                self.streamlines_visualized_first = np.ascontiguousarray(self.streamlines_first[selected_streamlines_ids], dtype='i4')
+                self.streamlines_visualized_count = np.ascontiguousarray(self.streamlines_count[selected_streamlines_ids], dtype='i4')
         else:
             print "Collapse."
 
     def remove_unselected_action(self):
-        print "Backspace: remove unselected"
-        pass
-
-
+        print "Backspace: remove unselected."
+        # Note: the following steps needs to be done in the given order.
+        # 0) Restore original color to selected representatives.
+        self.unselect_all()
+        # 1) sync self.representative_ids_ordered with new clusters:
+        self.representative_ids_ordered = self.clusters.keys()
+        # 2) change first and count buffers of representatives:
+        self.representatives_first = np.ascontiguousarray(self.streamlines_first[self.clusters.keys()], dtype='i4')
+        self.representatives_count = np.ascontiguousarray(self.streamlines_count[self.clusters.keys()], dtype='i4')
+        # 3) recompute self.representatives
+        self.representatives = buffer2coordinates(self.representatives_buffer,
+                                                  self.representatives_first,
+                                                  self.representatives_count)        
 
 
 
