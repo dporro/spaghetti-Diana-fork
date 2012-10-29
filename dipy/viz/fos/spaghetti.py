@@ -119,7 +119,9 @@ if __name__ == '__main__':
             
     # create the interaction system for tracks 
     tl = StreamlineLabeler('Bundle Picker',
-                           buffers, clusters)
+                           buffers, clusters,
+                           clustering_parameter=len(clusters),
+                           clustering_parameter_max=len(clusters))
     
     title = 'Streamline Interaction and Segmentation'
     w = Window(caption = title, 
