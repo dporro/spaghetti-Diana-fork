@@ -33,6 +33,8 @@ from PySide.QtCore import Qt
 # Interaction Logic:
 from manipulator import Manipulator
 
+from itertools import chain
+
 
 question_message = """
 >>>>Track Labeler
@@ -111,22 +113,22 @@ def compute_buffers(streamlines, alpha, save=False, filename=None):
     return tmp # streamlines_buffer, streamlines_colors, streamlines_first, streamlines_count
 
 
-def compute_buffers_representatives_old(buffers, representative_ids):
-    """Compute OpenGL buffers for representatives from tractography
-    buffers.
-    """
-    print "Creating buffers for representatives."
-    count = buffers['count'][representative_ids].astype('i4')
-    first = np.concatenate([[0], np.cumsum(count).astype('i4')])
-    tmp = np.zeros(buffers['buffer'].shape[0], dtype=np.bool)
-    for i, fid in enumerate(first):
-        tmp[fid:fid+buffers['count'][i]] = True
+# def compute_buffers_representatives_old(buffers, representative_ids):
+#     """Compute OpenGL buffers for representatives from tractography
+#     buffers.
+#     """
+#     print "Creating buffers for representatives."
+#     count = buffers['count'][representative_ids].astype('i4')
+#     first = np.concatenate([[0], np.cumsum(count).astype('i4')])
+#     tmp = np.zeros(buffers['buffer'].shape[0], dtype=np.bool)
+#     for i, fid in enumerate(first):
+#         tmp[fid:fid+buffers['count'][i]] = True
         
-    representative_buffers = {'buffer': np.ascontiguousarray(buffers['buffer'][tmp], dtype='f4'),
-                              'colors': np.ascontiguousarray(buffers['colors'][tmp], dtype='f4'),
-                              'count': np.ascontiguousarray(count),
-                              'first': np.ascontiguousarray(first)}
-    return representative_buffers
+#     representative_buffers = {'buffer': np.ascontiguousarray(buffers['buffer'][tmp], dtype='f4'),
+#                               'colors': np.ascontiguousarray(buffers['colors'][tmp], dtype='f4'),
+#                               'count': np.ascontiguousarray(count),
+#                               'first': np.ascontiguousarray(first)}
+#     return representative_buffers
 
 
 def compute_buffers_representatives(buffers, representative_ids):
@@ -157,7 +159,7 @@ def buffer2coordinates(buffers):
 class StreamlineLabeler(Actor, Manipulator):   
     """The Labeler for streamlines.
     """
-    def __init__(self, name, buffers, clusters, representative_buffers=None, colors = None, vol_shape=None, representatives_line_width=5.0, streamlines_line_width=2.0, representatives_alpha=1.0, streamlines_alpha=1.0, affine=None, verbose=False):
+    def __init__(self, name, buffers, clusters, representative_buffers=None, colors=None, vol_shape=None, representatives_line_width=5.0, streamlines_line_width=2.0, representatives_alpha=1.0, streamlines_alpha=1.0, affine=None, verbose=False):
         """StreamlineLabeler is meant to explore and select subsets of the
         streamlines. The exploration occurs through QuickBundles (qb) in
         order to simplify the scene.
@@ -212,6 +214,9 @@ class StreamlineLabeler(Actor, Manipulator):
         self.color_storage = {}
         # This is the color of a selected representative.
         self.color_selected = np.array([1.0, 1.0, 1.0, 1.0], dtype='f4')
+
+        self.streamlines_visualized_first = self.streamlines_first
+        self.streamlines_visualized_count = self.streamlines_count
 
         # #buffer for selected virtual streamlines
         # self.selected = []
@@ -323,7 +328,19 @@ class StreamlineLabeler(Actor, Manipulator):
 
         elif symbol == Qt.Key_H:
             print 'H: Hide/show representatives.'
-            self.hide_representatives = not self.hide_representatives       
+            self.hide_representatives = not self.hide_representatives
+
+        elif symbol == Qt.Key_E:
+            print 'E: Expand/collapse streamlines of selected representatives.'
+            self.expand_collapse_selected()
+
+        elif symbol == Qt.Key_Backspace:
+            print 'Backspace: Remove unselected representatives.'
+            self.remove_unselected()
+
+        elif symbol == Qt.Key_Delete:
+            print 'Delete: Remove selected representatives.'
+            self.remove_selected()
 
 
     def get_pointed_representative(self, min_dist=1e-3):
@@ -351,7 +368,7 @@ class StreamlineLabeler(Actor, Manipulator):
         # otherwise a previously selected representative would be
         # stored as white and never get its original color back.
         if representative_id not in self.color_storage:
-            self.color_storage[representative_id] = self.representatives_colors[first:first+count].copy()
+            self.color_storage[representative_id] = self.representatives_colors[first:first+count].copy() # .copy() is mandatory here otherwise that memory is changed by the next line!
         self.representatives_colors[first:first+count] = self.color_selected
 
 
@@ -371,6 +388,7 @@ class StreamlineLabeler(Actor, Manipulator):
         for rid in self.representative_ids_ordered:
             self.select_action(rid)
 
+
     def unselect_all_action(self):
         print "A: unselect all representatives."
         for rid in self.representative_ids_ordered:
@@ -386,10 +404,26 @@ class StreamlineLabeler(Actor, Manipulator):
                 self.unselect_action(rid)
 
 
+    def expand_collapse_selected_action(self):
+        print "E: Expand/collapse streamlines of selected representatives."
+        if self.expand:
+            print "Expand."
+            selected_streamlines_ids = list(reduce(chain, [self.clusters[rid] for rid in self.selected]))
+            self.streamlines_visualized_first = np.ascontiguousarray(self.streamlines_first[selected_streamlines_ids], dtype='i4')
+            self.streamlines_visualized_count = np.ascontiguousarray(self.streamlines_count[selected_streamlines_ids], dtype='i4')
+        else:
+            print "Collapse."
+
+    def remove_unselected_action(self):
+        print "Backspace: remove unselected"
+        pass
 
 
 
 
+
+
+################################################
 
     def select_streamline(self, ids):
         """Do visual selection of given representatives.
