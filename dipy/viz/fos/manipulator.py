@@ -4,11 +4,14 @@ import copy
 import code
 
 
-def clustering(streamline_ids, clusters_number, seed=0):
+def clustering_function(streamline_ids, clusters_number, seed=0):
     """Create fake clustering just playing randomly with streamline
     ids. For testing purpose.
     """
-    assert(clusters_number <= len(streamline_ids))
+    if clusters_number > len(streamline_ids):
+        clusters_number = len(streamline_ids)
+        print "clustering_function WARNING: clusters_number > len(streamline_ids)"
+        
     random.seed(seed)
     representatives = set(random.sample(streamline_ids, clusters_number))
     what_remains = set(streamline_ids).difference(representatives)
@@ -152,17 +155,21 @@ class Manipulator(object):
         raise NotImplementedError
         
 
-    def recluster(self, clusters_number):
-        """
+    def recluster(self, clustering_parameter):
+        """Operate self.clustering with clustering_parameter on the
+        current objects.
         """
         streamline_ids_new = reduce(set.union, self.clusters.values())
-        # sanity check:
-        assert(clusters_number <= len(streamline_ids_new))
-        clusters_new = self.clustering_function(streamline_ids_new, clusters_number)
+        clusters_new = self.clustering_function(streamline_ids_new, clustering_parameter)
         # sanity check:
         assert(streamline_ids_new == reduce(set.union, clusters_new.values()))
-        self.history.append('recluster('+str(clusters_number)+')')
+        self.history.append('recluster('+str(clustering_parameter)+')')
         self.clusters_reset(clusters_new)
+        self.recluster_action()
+
+
+    def recluster_action(self):
+        raise NotImplementedError
 
 
     def invert(self):
