@@ -67,14 +67,16 @@ if __name__ == '__main__':
         # T = T[:5000]
         T = np.array(T, dtype=np.object)
 
+        print "Dowsampling."
         T = [downsample(t, qb_n_points) - np.array(data.shape[:3]) / 2. for t in T]
+        print "Rotating."
         axis = np.array([1, 0, 0])
         theta = - 90. 
         T = np.dot(T,rotation_matrix(axis, theta))
         axis = np.array([0, 1, 0])
         theta = 180. 
         T = np.dot(T, rotation_matrix(axis, theta))
-
+        print "Computing buffers."
         buffers = compute_buffers(T, alpha=1.0, save=True, filename=buffers_filename)
     
     # load initial QuickBundles with threshold qb_threshold
