@@ -42,7 +42,7 @@ if __name__ == '__main__':
     num_M_seeds = 1
     directory_name='./'
     qb_threshold = 30 # in mm
-    qb_n_points = 15
+    qb_n_points = 12
 
     #load T1 volume registered in MNI space
     t1_filename = directory_name+'data/subj_'+subject+'/MPRAGE_32/T1_flirt_out.nii.gz'
@@ -60,13 +60,14 @@ if __name__ == '__main__':
     except IOError:
         fdpyw = tracks_basenane+'.dpy'    
         dpr = Dpy(fdpyw, 'r')
+        print "Loading", fdpyw
         T = dpr.read_tracks()
-        dpr.close() 
+        dpr.close()
     
         # T = T[:5000]
         T = np.array(T, dtype=np.object)
 
-        T = [downsample(t, 12) - np.array(data.shape[:3]) / 2. for t in T]
+        T = [downsample(t, qb_n_points) - np.array(data.shape[:3]) / 2. for t in T]
         axis = np.array([1, 0, 0])
         theta = - 90. 
         T = np.dot(T,rotation_matrix(axis, theta))
@@ -92,8 +93,25 @@ if __name__ == '__main__':
             print "Saving", fpkl
             pickle.dump(qb, open(fpkl, 'w'))
             
-        tmp, representative_ids = qb.exemplars()
-        clusters = dict(zip(representative_ids, [set(qb.label2tracksids(i)) for i, rid in enumerate(representative_ids)]))
+        tmpa, qb_internal_id = qb.exemplars() # this function call is necessary to let qb compute qb.exempsi
+        # WRONG!
+        # clusters = dict(zip(representative_ids, [set(qb.label2tracksids(i)) for i, rid in enumerate(representative_ids)]))
+
+        # Note that the following code to construct 'clusters' works
+        # on the assumption that the actual implementation of
+        # qb.exemplars() returns the exemplars in the same order than
+        # they are returned by qb.clustering.keys(). Unfortunately I
+        # found no other way to build the 'clusters' dictionary which
+        # associates the representative ID with the set of IDs of the
+        # represented streamlines, where ID(s) are always referred to
+        # the order in which each streamline appears in the
+        # tractography. It could be meaningful to fix the qb code
+        # accordingly.
+        clusters = {}
+        for i, clusterid in enumerate(qb.clustering.keys()):
+            indices = qb.clustering[clusterid]['indices']
+            clusters[indices[qb_internal_id[i]]] = set(indices)
+
         print "Saving", clusters_filename
         pickle.dump(clusters, open(clusters_filename,'w'))
             
