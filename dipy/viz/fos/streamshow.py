@@ -31,7 +31,7 @@ import Tkinter, tkFileDialog
 from PySide.QtCore import Qt
 
 # Interaction Logic:
-from manipulator import Manipulator
+from manipulator import Manipulator, clustering_function
 
 from itertools import chain
 
@@ -159,7 +159,7 @@ def buffer2coordinates(buffer, first, count):
 class StreamlineLabeler(Actor, Manipulator):   
     """The Labeler for streamlines.
     """
-    def __init__(self, name, buffers, clusters, representative_buffers=None, colors=None, vol_shape=None, representatives_line_width=5.0, streamlines_line_width=2.0, representatives_alpha=1.0, streamlines_alpha=1.0, affine=None, verbose=False):
+    def __init__(self, name, buffers, clusters, representative_buffers=None, colors=None, vol_shape=None, representatives_line_width=5.0, streamlines_line_width=2.0, representatives_alpha=1.0, streamlines_alpha=1.0, affine=None, verbose=False, clustering_parameter=None, clustering_parameter_max=None):
         """StreamlineLabeler is meant to explore and select subsets of the
         streamlines. The exploration occurs through QuickBundles (qb) in
         order to simplify the scene.
@@ -174,7 +174,7 @@ class StreamlineLabeler(Actor, Manipulator):
         self.mouse_y=None
 
         self.clusters = clusters
-        Manipulator.__init__(self, initial_clusters=clusters, clustering_function=None)
+        Manipulator.__init__(self, initial_clusters=clusters, clustering_function=clustering_function)
 
         # We keep the representative_ids as list to preserve order,
         # which is necessary for presentation purposes:
@@ -219,6 +219,9 @@ class StreamlineLabeler(Actor, Manipulator):
 
         self.streamlines_visualized_first = self.streamlines_first
         self.streamlines_visualized_count = self.streamlines_count
+
+        self.clustering_parameter = clustering_parameter
+        self.clustering_parameter_max = clustering_parameter_max
 
         # #buffer for selected virtual streamlines
         # self.selected = []
@@ -268,7 +271,8 @@ class StreamlineLabeler(Actor, Manipulator):
             glPopMatrix()
 
         # plot tractography if necessary:
-        if self.expand and self.streamlines_visualized_first.size > 0:
+        # if self.expand and self.streamlines_visualized_first.size > 0:
+        if self.expand and len(self.selected) > 0:
             glVertexPointer(3,GL_FLOAT,0,self.streamlines_buffer.ctypes.data)
             glColorPointer(4,GL_FLOAT,0,self.streamlines_colors.ctypes.data)
             glLineWidth(self.streamlines_line_width)
@@ -344,6 +348,16 @@ class StreamlineLabeler(Actor, Manipulator):
             print 'Delete: Remove selected representatives.'
             self.remove_selected()
 
+        elif symbol == Qt.Key_R:
+            print 'R: Re-cluster'
+            root = Tkinter.Tk()
+            root.wm_title('QuickBundles threshold')
+            ts = ThresholdSelector(root, default_value=self.clustering_parameter, to=min(self.clustering_parameter_max, len(self.streamline_ids)))
+            root.wait_window()
+            self.clustering_parameter = ts.value
+            print "clustering_parameter =", self.clustering_parameter
+            self.recluster(self.clustering_parameter)
+            
 
     def get_pointed_representative(self, min_dist=1e-3):
         """Compute the id of the closest streamline to the mouse pointer.
@@ -429,238 +443,246 @@ class StreamlineLabeler(Actor, Manipulator):
         # 2) change first and count buffers of representatives:
         self.representatives_first = np.ascontiguousarray(self.streamlines_first[self.clusters.keys()], dtype='i4')
         self.representatives_count = np.ascontiguousarray(self.streamlines_count[self.clusters.keys()], dtype='i4')
-        # 3) recompute self.representatives
+        # 3) recompute self.representatives:
         self.representatives = buffer2coordinates(self.representatives_buffer,
                                                   self.representatives_first,
-                                                  self.representatives_count)        
+                                                  self.representatives_count)
+        # 4) recompute self.streamlines_visualized_first/count:
+        streamlines_ids = list(reduce(chain, [self.clusters[rid] for rid in self.clusters]))
+        self.streamlines_visualized_first = np.ascontiguousarray(self.streamlines_first[streamlines_ids], dtype='i4')
+        self.streamlines_visualized_count = np.ascontiguousarray(self.streamlines_count[streamlines_ids], dtype='i4')
 
+
+    def recluster_action(self):
+        self.select_all()
+        self.remove_unselected_action()
 
 
 
 ################################################
 
-    def select_streamline(self, ids):
-        """Do visual selection of given representatives.
-        """
-        # WARNING: we assume that no streamlines can ever have color_selected as original color
-        color_selected = np.array([1.0, 1.0, 1.0, 1.0], dtype='f4')
-        if ids == 'all':
-            ids = range(len(self.representatives))
-        elif np.isscalar(ids):
-            ids = [ids]
-        for id in ids:
-            if not id in self.old_color:
-                self.old_color[id] = self.representatives_colors[self.representatives_first[id]:self.representatives_first[id]+self.representatives_count[id],:].copy()
-                new_color = np.ones(self.old_color[id].shape, dtype='f4') * color_selected
-                if self.verbose: print("Storing old color: %s" % self.old_color[id][0])
-                self.representatives_colors[self.representatives_first[id]:self.representatives_first[id]+self.representatives_count[id],:] = new_color
-                self.selected.append(id)
+    # def select_streamline(self, ids):
+    #     """Do visual selection of given representatives.
+    #     """
+    #     # WARNING: we assume that no streamlines can ever have color_selected as original color
+    #     color_selected = np.array([1.0, 1.0, 1.0, 1.0], dtype='f4')
+    #     if ids == 'all':
+    #         ids = range(len(self.representatives))
+    #     elif np.isscalar(ids):
+    #         ids = [ids]
+    #     for id in ids:
+    #         if not id in self.old_color:
+    #             self.old_color[id] = self.representatives_colors[self.representatives_first[id]:self.representatives_first[id]+self.representatives_count[id],:].copy()
+    #             new_color = np.ones(self.old_color[id].shape, dtype='f4') * color_selected
+    #             if self.verbose: print("Storing old color: %s" % self.old_color[id][0])
+    #             self.representatives_colors[self.representatives_first[id]:self.representatives_first[id]+self.representatives_count[id],:] = new_color
+    #             self.selected.append(id)
 
-    def unselect_streamline(self, ids):
-        """Do visual un-selection of given representatives.
-        """
-        if ids == 'all':
-            ids = range(len(self.representatives))
-        elif np.isscalar(ids):
-            ids = [ids]
-        for id in ids:
-            if id in self.old_color:
-                self.representatives_colors[self.representatives_first[id]:self.representatives_first[id]+self.representatives_count[id],:] = self.old_color[id]
-                if self.verbose: print("Setting old color: %s" % self.old_color[id][0])
-                self.old_color.pop(id)
-                if id in self.selected:
-                    self.selected.remove(id)
-                else:
-                    print('WARNING: unselecting id %s but not in %s' % (id, self.selected))
+    # def unselect_streamline(self, ids):
+    #     """Do visual un-selection of given representatives.
+    #     """
+    #     if ids == 'all':
+    #         ids = range(len(self.representatives))
+    #     elif np.isscalar(ids):
+    #         ids = [ids]
+    #     for id in ids:
+    #         if id in self.old_color:
+    #             self.representatives_colors[self.representatives_first[id]:self.representatives_first[id]+self.representatives_count[id],:] = self.old_color[id]
+    #             if self.verbose: print("Setting old color: %s" % self.old_color[id][0])
+    #             self.old_color.pop(id)
+    #             if id in self.selected:
+    #                 self.selected.remove(id)
+    #             else:
+    #                 print('WARNING: unselecting id %s but not in %s' % (id, self.selected))
                     
-    def invert_streamlines(self):
-        """ invert selected streamlines to unselected
-        """        
-        tmp_selected=list(set(range(len(self.representatives))).difference(set(self.selected)))
-        self.unselect_streamline('all')
-        #print tmp_selected
-        self.selected=[]
-        self.select_streamline(tmp_selected)
+    # def invert_streamlines(self):
+    #     """ invert selected streamlines to unselected
+    #     """        
+    #     tmp_selected=list(set(range(len(self.representatives))).difference(set(self.selected)))
+    #     self.unselect_streamline('all')
+    #     #print tmp_selected
+    #     self.selected=[]
+    #     self.select_streamline(tmp_selected)
 
-    def process_keys_old(self,symbol,modifiers):
-        """Bind actions to key press.
-        """
-        prev_selected = copy.copy(self.selected)
-        if symbol == Qt.Key_P:     
-            print 'P'
-            id = self.picking_representatives(symbol, modifiers)
-            print('Streamline id %d' % id)
-            if prev_selected.count(id) == 0:
-                self.select_streamline(id)
-            else:
-                self.unselect_streamline(id)
-            if self.verbose: 
-                print 'Selected:'
-                print self.selected
+    # def process_keys_old(self,symbol,modifiers):
+    #     """Bind actions to key press.
+    #     """
+    #     prev_selected = copy.copy(self.selected)
+    #     if symbol == Qt.Key_P:     
+    #         print 'P'
+    #         id = self.picking_representatives(symbol, modifiers)
+    #         print('Streamline id %d' % id)
+    #         if prev_selected.count(id) == 0:
+    #             self.select_streamline(id)
+    #         else:
+    #             self.unselect_streamline(id)
+    #         if self.verbose: 
+    #             print 'Selected:'
+    #             print self.selected
 
-        if symbol==Qt.Key_E:
-            print 'E'
-            if self.verbose: print("Expand/collapse selected clusters.")
-            if not self.expand and len(self.selected)>0:
-                streamlines_selected = []
-                for tid in self.selected: streamlines_selected += self.clusters.label2streamlinesids(tid)
-                self.streamlines_visualized_first = np.ascontiguousarray(self.streamlines_first[streamlines_selected, :])
-                self.streamlines_visualized_count = np.ascontiguousarray(self.streamlines_count[streamlines_selected, :])
-                self.expand = True
-            else:
-                self.expand = False
+    #     if symbol==Qt.Key_E:
+    #         print 'E'
+    #         if self.verbose: print("Expand/collapse selected clusters.")
+    #         if not self.expand and len(self.selected)>0:
+    #             streamlines_selected = []
+    #             for tid in self.selected: streamlines_selected += self.clusters.label2streamlinesids(tid)
+    #             self.streamlines_visualized_first = np.ascontiguousarray(self.streamlines_first[streamlines_selected, :])
+    #             self.streamlines_visualized_count = np.ascontiguousarray(self.streamlines_count[streamlines_selected, :])
+    #             self.expand = True
+    #         else:
+    #             self.expand = False
         
-        # Freeze and restart:
-        elif symbol == Qt.Key_F and len(self.selected) > 0:
-            print 'F'
-            self.freeze()
+    #     # Freeze and restart:
+    #     elif symbol == Qt.Key_F and len(self.selected) > 0:
+    #         print 'F'
+    #         self.freeze()
 
-        elif symbol == Qt.Key_A:
-            print 'A'        
-            print('Select/unselect all representatives')
-            if len(self.selected) < len(self.representatives):
-                self.select_streamline('all')
-            else:
-                self.unselect_streamline('all')
+    #     elif symbol == Qt.Key_A:
+    #         print 'A'        
+    #         print('Select/unselect all representatives')
+    #         if len(self.selected) < len(self.representatives):
+    #             self.select_streamline('all')
+    #         else:
+    #             self.unselect_streamline('all')
         
-        elif symbol == Qt.Key_I:
-            print 'I'
-            print('Invert selection')
-            print self.selected
-            self.invert_streamlines()
+    #     elif symbol == Qt.Key_I:
+    #         print 'I'
+    #         print('Invert selection')
+    #         print self.selected
+    #         self.invert_streamlines()
             
-        elif symbol == Qt.Key_H:
-            print 'H'
-            print('Hide/show representatives.')
-            self.hide_representatives = not self.hide_representatives       
+    #     elif symbol == Qt.Key_H:
+    #         print 'H'
+    #         print('Hide/show representatives.')
+    #         self.hide_representatives = not self.hide_representatives       
             
-        elif symbol == Qt.Key_S:
-            print 'S'
-            print('Save selected streamlines_ids as pickle file.')
-            self.streamlines_ids_to_be_saved = self.streamlines_ids
-            if len(self.selected)>0:
-                self.streamlines_ids_to_be_saved = self.streamlines_ids[np.concatenate([self.clusters.label2streamlinesids(tid) for tid in self.selected])]
-            print("Saving %s streamlines." % len(self.streamlines_ids_to_be_saved))
-            root = Tkinter.Tk()
-            root.withdraw()
-            pickle.dump(self.streamlines_ids_to_be_saved, 
-                    tkFileDialog.asksaveasfile(), 
-                    protocol=pickle.HIGHEST_PROTOCOL)
+    #     elif symbol == Qt.Key_S:
+    #         print 'S'
+    #         print('Save selected streamlines_ids as pickle file.')
+    #         self.streamlines_ids_to_be_saved = self.streamlines_ids
+    #         if len(self.selected)>0:
+    #             self.streamlines_ids_to_be_saved = self.streamlines_ids[np.concatenate([self.clusters.label2streamlinesids(tid) for tid in self.selected])]
+    #         print("Saving %s streamlines." % len(self.streamlines_ids_to_be_saved))
+    #         root = Tkinter.Tk()
+    #         root.withdraw()
+    #         pickle.dump(self.streamlines_ids_to_be_saved, 
+    #                 tkFileDialog.asksaveasfile(), 
+    #                 protocol=pickle.HIGHEST_PROTOCOL)
 
-        elif symbol == Qt.Key_Question:
-            print question_message
-        elif symbol == Qt.Key_B:
-            print 'B'
-            print('Go back in the freezing history.')
-            if len(self.history) > 1:
-                self.history.pop()
-                self.clusters, self.streamlines, self.streamlines_ids, self.representatives_buffer, self.representatives_colors, self.representatives_first, self.representatives_count, self.streamlines_buffer, self.streamlines_colors, self.streamlines_first, self.streamlines_count = self.history[-1]
-                if self.reps=='representatives':
-                    self.representatives=qb.representatives()
-                if self.reps=='exemplars':
-                    self.representatives, self.ex_ids = self.clusters.exemplars()#representatives()
-                print len(self.representatives), 'representatives'
-                self.selected = []
-                self.old_color = {}
-                self.expand = False
-                self.hide_representatives = False
+    #     elif symbol == Qt.Key_Question:
+    #         print question_message
+    #     elif symbol == Qt.Key_B:
+    #         print 'B'
+    #         print('Go back in the freezing history.')
+    #         if len(self.history) > 1:
+    #             self.history.pop()
+    #             self.clusters, self.streamlines, self.streamlines_ids, self.representatives_buffer, self.representatives_colors, self.representatives_first, self.representatives_count, self.streamlines_buffer, self.streamlines_colors, self.streamlines_first, self.streamlines_count = self.history[-1]
+    #             if self.reps=='representatives':
+    #                 self.representatives=qb.representatives()
+    #             if self.reps=='exemplars':
+    #                 self.representatives, self.ex_ids = self.clusters.exemplars()#representatives()
+    #             print len(self.representatives), 'representatives'
+    #             self.selected = []
+    #             self.old_color = {}
+    #             self.expand = False
+    #             self.hide_representatives = False
 
-        elif symbol == Qt.Key_G:
-            print 'G'
-            print('Get streamlines from mask.')
-            ids = self.maskout_streamlines()
-            self.select_streamline(ids)
+    #     elif symbol == Qt.Key_G:
+    #         print 'G'
+    #         print('Get streamlines from mask.')
+    #         ids = self.maskout_streamlines()
+    #         self.select_streamline(ids)
 
-    def freeze(self):
-        print("Freezing current expanded real streamlines, then doing QB on them, then restarting.")
-        print("Selected representatives: %s" % self.selected)
-        streamlines_frozen = []
-        streamlines_frozen_ids = []
-        for tid in self.selected:
-            print tid
-            part_streamlines = self.clusters.label2streamlines(self.streamlines, tid)
-            part_streamlines_ids = self.clusters.label2streamlinesids(tid)
-            print("virtual %s represents %s streamlines." % (tid, len(part_streamlines)))
-            streamlines_frozen += part_streamlines
-            streamlines_frozen_ids += part_streamlines_ids
-        print "frozen streamlines size:", len(streamlines_frozen)
-        print "Computing quick bundles...",
-        self.unselect_streamline('all')
-        self.streamlines = streamlines_frozen
-        self.streamlines_ids = self.streamlines_ids[streamlines_frozen_ids] 
+    # def freeze(self):
+    #     print("Freezing current expanded real streamlines, then doing QB on them, then restarting.")
+    #     print("Selected representatives: %s" % self.selected)
+    #     streamlines_frozen = []
+    #     streamlines_frozen_ids = []
+    #     for tid in self.selected:
+    #         print tid
+    #         part_streamlines = self.clusters.label2streamlines(self.streamlines, tid)
+    #         part_streamlines_ids = self.clusters.label2streamlinesids(tid)
+    #         print("virtual %s represents %s streamlines." % (tid, len(part_streamlines)))
+    #         streamlines_frozen += part_streamlines
+    #         streamlines_frozen_ids += part_streamlines_ids
+    #     print "frozen streamlines size:", len(streamlines_frozen)
+    #     print "Computing quick bundles...",
+    #     self.unselect_streamline('all')
+    #     self.streamlines = streamlines_frozen
+    #     self.streamlines_ids = self.streamlines_ids[streamlines_frozen_ids] 
         
-        root = Tkinter.Tk()
-        root.wm_title('QuickBundles threshold')
-        ts = ThresholdSelector(root, default_value=self.clusters.dist_thr/2.0)
-        root.wait_window()
+    #     root = Tkinter.Tk()
+    #     root.wm_title('QuickBundles threshold')
+    #     ts = ThresholdSelector(root, default_value=self.clusters.dist_thr/2.0)
+    #     root.wait_window()
         
-        self.clusters = QuickBundles(self.streamlines, dist_thr=ts.value, pts=self.clusters.pts)
-        #self.clusters.dist_thr = qb.dist_thr/2.
-        self.clusters.dist_thr = ts.value
-        if self.reps=='representatives':
-            self.representatives=qb.representatives()
-        if self.reps=='exemplars':
-            self.representatives,self.ex_ids = self.clusters.exemplars()
-        print len(self.representatives), 'representatives'
-        self.representatives_buffer, self.representatives_colors, self.representatives_first, self.representatives_count = self.compute_buffers(self.representatives, self.representatives_alpha)
-        #compute buffers
-        self.streamlines_buffer, self.streamlines_colors, self.streamlines_first, self.streamlines_count = self.compute_buffers(self.streamlines, self.streamlines_alpha)
-        # self.unselect_streamline('all')
-        self.selected = []
-        self.old_color = {}
-        self.expand = False
-        self.history.append([self.clusters, 
-                            self.streamlines, 
-                            self.streamlines_ids, 
-                            self.representatives_buffer, 
-                            self.representatives_colors, 
-                            self.representatives_first, 
-                            self.representatives_count, 
-                            self.streamlines_buffer, 
-                            self.streamlines_colors, 
-                            self.streamlines_first, 
-                            self.streamlines_count])
-        if self.vol_shape is not None:
-            print("Shifting!")
-            self.representatives_shifted = [downsample(t + np.array(self.vol_shape) / 2., 30) for t in self.representatives]
-        else:
-            self.representatives_shifted = None
+    #     self.clusters = QuickBundles(self.streamlines, dist_thr=ts.value, pts=self.clusters.pts)
+    #     #self.clusters.dist_thr = qb.dist_thr/2.
+    #     self.clusters.dist_thr = ts.value
+    #     if self.reps=='representatives':
+    #         self.representatives=qb.representatives()
+    #     if self.reps=='exemplars':
+    #         self.representatives,self.ex_ids = self.clusters.exemplars()
+    #     print len(self.representatives), 'representatives'
+    #     self.representatives_buffer, self.representatives_colors, self.representatives_first, self.representatives_count = self.compute_buffers(self.representatives, self.representatives_alpha)
+    #     #compute buffers
+    #     self.streamlines_buffer, self.streamlines_colors, self.streamlines_first, self.streamlines_count = self.compute_buffers(self.streamlines, self.streamlines_alpha)
+    #     # self.unselect_streamline('all')
+    #     self.selected = []
+    #     self.old_color = {}
+    #     self.expand = False
+    #     self.history.append([self.clusters, 
+    #                         self.streamlines, 
+    #                         self.streamlines_ids, 
+    #                         self.representatives_buffer, 
+    #                         self.representatives_colors, 
+    #                         self.representatives_first, 
+    #                         self.representatives_count, 
+    #                         self.streamlines_buffer, 
+    #                         self.streamlines_colors, 
+    #                         self.streamlines_first, 
+    #                         self.streamlines_count])
+    #     if self.vol_shape is not None:
+    #         print("Shifting!")
+    #         self.representatives_shifted = [downsample(t + np.array(self.vol_shape) / 2., 30) for t in self.representatives]
+    #     else:
+    #         self.representatives_shifted = None
 
 
-    def maskout_streamlines(self):
-        """ retrieve ids of representatives which go through the mask
-        """
-        mask = self.slicer.mask        
-        #streamlines = self.streamlines_shifted
-        streamlines = self.representatives_shifted
-        #tcs,self.tes = track_counts(streamlines,mask.shape,(1,1,1),True)
-        tcs,tes = track_counts(streamlines,mask.shape,(1,1,1),True)
-        # print 'tcs:',tcs
-        # print 'tes:',len(self.tes.keys())
-        #find volume indices of mask's voxels
-        roiinds=np.where(mask==1)
-        #make it a nice 2d numpy array (Nx3)
-        roiinds=np.array(roiinds).T
-        #get streamlines going through the roi
-        # print "roiinds:", len(roiinds)
-        # mask_streamlines,mask_streamlines_inds=bring_roi_streamlines(streamlines,roiinds,self.tes)
-        mask_streamlines_inds = []
-        for voxel in roiinds:
-            try:
-                #mask_streamlines_inds+=self.tes[tuple(voxel)]
-                mask_streamlines_inds+=tes[tuple(voxel)]
-            except KeyError:
-                pass
-        mask_streamlines_inds = list(set(mask_streamlines_inds))
-        print("Masked streamlines %d" % len(mask_streamlines_inds))
-        print("mask_streamlines_inds: %s" % mask_streamlines_inds)
-        return mask_streamlines_inds
+    # def maskout_streamlines(self):
+    #     """ retrieve ids of representatives which go through the mask
+    #     """
+    #     mask = self.slicer.mask        
+    #     #streamlines = self.streamlines_shifted
+    #     streamlines = self.representatives_shifted
+    #     #tcs,self.tes = track_counts(streamlines,mask.shape,(1,1,1),True)
+    #     tcs,tes = track_counts(streamlines,mask.shape,(1,1,1),True)
+    #     # print 'tcs:',tcs
+    #     # print 'tes:',len(self.tes.keys())
+    #     #find volume indices of mask's voxels
+    #     roiinds=np.where(mask==1)
+    #     #make it a nice 2d numpy array (Nx3)
+    #     roiinds=np.array(roiinds).T
+    #     #get streamlines going through the roi
+    #     # print "roiinds:", len(roiinds)
+    #     # mask_streamlines,mask_streamlines_inds=bring_roi_streamlines(streamlines,roiinds,self.tes)
+    #     mask_streamlines_inds = []
+    #     for voxel in roiinds:
+    #         try:
+    #             #mask_streamlines_inds+=self.tes[tuple(voxel)]
+    #             mask_streamlines_inds+=tes[tuple(voxel)]
+    #         except KeyError:
+    #             pass
+    #     mask_streamlines_inds = list(set(mask_streamlines_inds))
+    #     print("Masked streamlines %d" % len(mask_streamlines_inds))
+    #     print("mask_streamlines_inds: %s" % mask_streamlines_inds)
+    #     return mask_streamlines_inds
 
 
 class ThresholdSelector(object):
-    def __init__(self, parent, default_value):
+    def __init__(self, parent, default_value, from_=1, to=500):
         self.parent = parent
-        self.s = Tkinter.Scale(self.parent, from_=1, to=30, width=25, length=300, orient=Tkinter.HORIZONTAL)
+        self.s = Tkinter.Scale(self.parent, from_=from_, to=to, width=25, length=300, orient=Tkinter.HORIZONTAL)
         self.s.set(default_value)
         self.s.pack()
         self.b = Tkinter.Button(self.parent, text='OK', command=self.ok)
