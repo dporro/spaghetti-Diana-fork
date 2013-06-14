@@ -31,9 +31,11 @@ import Tkinter, tkFileDialog
 from PySide.QtCore import Qt
 
 # Interaction Logic:
-from manipulator import Manipulator, clustering_function
+from manipulator import Manipulator
 
 from itertools import chain
+
+from dipy.segment.quickbundles import QuickBundles
 
 
 question_message = """
@@ -151,9 +153,34 @@ def buffer2coordinates(buffer, first, count):
 
     This is meant mainly when the input 'buffers' is 'representative_buffers'.
     """    
-    return np.array([buffer[first[i]:first[i]+count[i]] \
-                     for i in range(len(first))], dtype=np.object)
+    return np.array([buffer[first[i]:first[i]+count[i]].astype(np.object) \
+                     for i in range(len(first))])
 
+
+def qb_wrapper(data, qb_threshold, streamlines_ids=None, qb_n_points=None):
+    """A wrapper for qb with the correct API for the Labeler.
+
+    Note: qb_n_points = None means 'do not dowsample again data'.
+    """
+    print "qb_wrapper: starting"
+    if streamlines_ids is None:
+        streamlines_ids = np.arange(len(data), dtype=np.int)
+    else:
+        streamlines_ids = np.sort(list(streamlines_ids)).astype(np.int)
+
+    print "streamlines_ids:", len(streamlines_ids)
+    print "data:", data.shape
+    print "Calling QuickBundles."
+    qb = QuickBundles(data, qb_threshold, qb_n_points)
+    tmpa, qb_internal_id = qb.exemplars() # this function call is necessary to let qb compute qb.exempsi
+    clusters = {}
+    print "Creating new clusters dictionary"
+    for i, clusterid in enumerate(qb.clustering.keys()):
+        indices = streamlines_ids[qb.clustering[clusterid]['indices']]
+        tmp = indices[qb_internal_id[i]]
+        clusters[tmp] = set(list(indices))
+        print tmp, '->', len(clusters[tmp])
+    return clusters
 
 
 class StreamlineLabeler(Actor, Manipulator):   
@@ -174,7 +201,7 @@ class StreamlineLabeler(Actor, Manipulator):
         self.mouse_y=None
 
         self.clusters = clusters
-        Manipulator.__init__(self, initial_clusters=clusters, clustering_function=clustering_function)
+        Manipulator.__init__(self, initial_clusters=clusters, clustering_function=qb_wrapper)
 
         # We keep the representative_ids as list to preserve order,
         # which is necessary for presentation purposes:
@@ -354,9 +381,15 @@ class StreamlineLabeler(Actor, Manipulator):
             root.wm_title('QuickBundles threshold')
             ts = ThresholdSelector(root, default_value=self.clustering_parameter, to=min(self.clustering_parameter_max, len(self.streamline_ids)))
             root.wait_window()
+            # try:
             self.clustering_parameter = ts.value
             print "clustering_parameter =", self.clustering_parameter
-            self.recluster(self.clustering_parameter)
+            self.recluster(self.clustering_parameter, buffer2coordinates(self.streamlines_buffer,
+                                                                         self.streamlines_first,
+                                                                         self.streamlines_count))
+            # except AttributeError: # the user closed the window without selecting a value
+                
+            #     return
             
 
     def get_pointed_representative(self, min_dist=1e-3):
