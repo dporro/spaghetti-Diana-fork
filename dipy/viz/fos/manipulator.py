@@ -4,7 +4,7 @@ import copy
 import code
 
 
-def clustering_function(streamline_ids, clusters_number, seed=0):
+def clustering_random(data, clusters_number, streamline_ids, seed=0):
     """Create fake clustering just playing randomly with streamline
     ids. For testing purpose.
     """
@@ -155,12 +155,12 @@ class Manipulator(object):
         raise NotImplementedError
         
 
-    def recluster(self, clustering_parameter):
+    def recluster(self, clustering_parameter, data=None):
         """Operate self.clustering with clustering_parameter on the
         current objects.
         """
         streamline_ids_new = reduce(set.union, self.clusters.values())
-        clusters_new = self.clustering_function(streamline_ids_new, clustering_parameter)
+        clusters_new = self.clustering_function(data, clustering_parameter, streamline_ids_new)
         # sanity check:
         assert(streamline_ids_new == reduce(set.union, clusters_new.values()))
         self.history.append('recluster('+str(clustering_parameter)+')')
