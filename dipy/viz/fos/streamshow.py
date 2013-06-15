@@ -37,6 +37,8 @@ from itertools import chain
 
 from dipy.segment.quickbundles import QuickBundles
 
+import time
+from sklearn.cluster import MiniBatchKMeans
 
 question_message = """
 >>>>Track Labeler
@@ -183,10 +185,42 @@ def qb_wrapper(data, qb_threshold, streamlines_ids=None, qb_n_points=None):
     return clusters
 
 
+
+def mbkm_wrapper(full_dissimilarity_matrix, n_clusters, streamlines_ids):
+    """Wrapper of MBKM with API compatible to the Manipulator.
+    """
+    dissimilarity_matrix = full_dissimilarity_matrix[streamlines_ids]
+
+    print "MBKM clustering time:",
+    init = 'random'
+    mbkm = MiniBatchKMeans(init=init, n_clusters=n_clusters, batch_size=1000,
+                          n_init=3, max_no_improvement=5, verbose=0)
+    t0 = time.time()
+    mbkm.fit(dissimilarity_matrix)
+    t_mini_batch = time.time() - t0
+    print t_mini_batch
+
+    print "exhaustive smarter search of the medoids:",
+    medoids_exhs = np.zeros(n_clusters, dtype=np.int)
+    t0 = time.time()
+    idxs = []
+    for i, centroid in enumerate(mbkm.cluster_centers_):
+        idx_i = np.where(mbkm.labels_==i)[0]
+        if idx_i.size == 0: idx_i = [0]
+        tmp = X[idx_i] - centroid
+        medoids_exhs[i] = idx_i[(tmp * tmp).sum(1).argmin()]
+        idxs.append(streamlines_ids[idx_i])
+        
+    t_exhs_query = time.time() - t0
+    print t_exhs_query, "sec"
+    clusters = dict(zip(medoids_exhs, idxs))
+    return clusters
+
+
 class StreamlineLabeler(Actor, Manipulator):   
     """The Labeler for streamlines.
     """
-    def __init__(self, name, buffers, clusters, representative_buffers=None, colors=None, vol_shape=None, representatives_line_width=5.0, streamlines_line_width=2.0, representatives_alpha=1.0, streamlines_alpha=1.0, affine=None, verbose=False, clustering_parameter=None, clustering_parameter_max=None):
+    def __init__(self, name, buffers, clusters, representative_buffers=None, colors=None, vol_shape=None, representatives_line_width=5.0, streamlines_line_width=2.0, representatives_alpha=1.0, streamlines_alpha=1.0, affine=None, verbose=False, clustering_parameter=None, clustering_parameter_max=None, full_dissimilarity_matrix=None):
         """StreamlineLabeler is meant to explore and select subsets of the
         streamlines. The exploration occurs through QuickBundles (qb) in
         order to simplify the scene.
@@ -201,7 +235,11 @@ class StreamlineLabeler(Actor, Manipulator):
         self.mouse_y=None
 
         self.clusters = clusters
-        Manipulator.__init__(self, initial_clusters=clusters, clustering_function=qb_wrapper)
+        # Qb:
+        # Manipulator.__init__(self, initial_clusters=clusters, clustering_function=qb_wrapper)
+
+        # MBKM:
+        Manipulator.__init__(self, initial_clusters=clusters, clustering_function=mbkm_wrapper)
 
         # We keep the representative_ids as list to preserve order,
         # which is necessary for presentation purposes:
@@ -247,8 +285,11 @@ class StreamlineLabeler(Actor, Manipulator):
         self.streamlines_visualized_first = self.streamlines_first
         self.streamlines_visualized_count = self.streamlines_count
 
+        # Clustering:
         self.clustering_parameter = clustering_parameter
         self.clustering_parameter_max = clustering_parameter_max
+        # MBKM:
+        self.full_dissimilarity_matrix = full_dissimilarity_matrix
 
         # #buffer for selected virtual streamlines
         # self.selected = []
@@ -378,18 +419,30 @@ class StreamlineLabeler(Actor, Manipulator):
         elif symbol == Qt.Key_R:
             print 'R: Re-cluster'
             root = Tkinter.Tk()
-            root.wm_title('QuickBundles threshold')
-            ts = ThresholdSelector(root, default_value=self.clustering_parameter, to=min(self.clustering_parameter_max, len(self.streamline_ids)))
+            # Qb:
+            # root.wm_title('QuickBundles threshold')
+            # default_value = self.clustering_parameter
+            # to = min(self.clustering_parameter_max, len(self.streamline_ids))
+
+            # MBKM:
+            root.wm_title('k: number of clusters')
+            default_value = 150
+            to = 200
+            if len(self.streamline_ids) < 1e5:
+                default_value = 50
+                
+            ts = ThresholdSelector(root, default_value=default_value, to=to)
             root.wait_window()
-            # try:
             self.clustering_parameter = ts.value
             print "clustering_parameter =", self.clustering_parameter
-            self.recluster(self.clustering_parameter, buffer2coordinates(self.streamlines_buffer,
-                                                                         self.streamlines_first,
-                                                                         self.streamlines_count))
-            # except AttributeError: # the user closed the window without selecting a value
-                
-            #     return
+            # Qb
+            # self.recluster(self.clustering_parameter, buffer2coordinates(self.streamlines_buffer,
+            #                                                              self.streamlines_first,
+            #                                                              self.streamlines_count))
+
+            # MBKM:
+            self.recluster(self.clustering_parameter, data=self.full_dissimilarity_matrix)
+            return
             
 
     def get_pointed_representative(self, min_dist=1e-3):
