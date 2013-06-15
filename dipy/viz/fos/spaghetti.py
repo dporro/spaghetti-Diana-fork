@@ -24,6 +24,8 @@ from dipy.tracking.metrics import downsample
 from fos import Scene
 import pickle
 from streamshow import compute_buffers, compute_buffers_representatives
+from dipy.tracking.distances import bundles_distances_mam
+from dissimilarity_common import compute_disimilarity
 
 
 def rotation_matrix(axis, theta_degree):
@@ -116,12 +118,35 @@ if __name__ == '__main__':
 
         print "Saving", clusters_filename
         pickle.dump(clusters, open(clusters_filename,'w'))
+
+
+    try:
+        num_prototypes = 40
+        full_dissimilarity_matrix_filename = tracks_basenane+'_dissimilarity'+str(num_prototypes)+'.npy'
+        print "Loading dissimilarity representation:", full_dissimilarity_matrix_filename
+    except IOError:
+        print "Computing dissimilarity representation."
+        fdpyw = tracks_basenane+'.dpy'    
+        dpr = Dpy(fdpyw, 'r')
+        print "Loading", fdpyw
+        T = dpr.read_tracks()
+        dpr.close()
+    
+        # T = T[:5000]
+        T = np.array(T, dtype=np.object)
+        
+        full_dissimilarity_matrix = compute_disimilarity(T, distance=bundles_distances_mam, prototype_policy='sff', num_prototypes=num_prototypes)
+
+        np.save(full_dissimilarity_matrix_filename, full_dissimilarity_matrix)
+
+
             
     # create the interaction system for tracks 
     tl = StreamlineLabeler('Bundle Picker',
                            buffers, clusters,
                            clustering_parameter=len(clusters),
-                           clustering_parameter_max=len(clusters))
+                           clustering_parameter_max=len(clusters),
+                           full_dissimilarity_matrix=full_dissimilarity_matrix)
     
     title = 'Streamline Interaction and Segmentation'
     w = Window(caption = title, 
