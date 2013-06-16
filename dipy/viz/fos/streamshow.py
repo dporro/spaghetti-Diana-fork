@@ -189,7 +189,7 @@ def qb_wrapper(data, qb_threshold, streamlines_ids=None, qb_n_points=None):
 def mbkm_wrapper(full_dissimilarity_matrix, n_clusters, streamlines_ids):
     """Wrapper of MBKM with API compatible to the Manipulator.
     """
-    dissimilarity_matrix = full_dissimilarity_matrix[streamlines_ids]
+    dissimilarity_matrix = full_dissimilarity_matrix[list(streamlines_ids)]
 
     print "MBKM clustering time:",
     init = 'random'
@@ -207,9 +207,9 @@ def mbkm_wrapper(full_dissimilarity_matrix, n_clusters, streamlines_ids):
     for i, centroid in enumerate(mbkm.cluster_centers_):
         idx_i = np.where(mbkm.labels_==i)[0]
         if idx_i.size == 0: idx_i = [0]
-        tmp = X[idx_i] - centroid
+        tmp = full_dissimilarity_matrix[idx_i] - centroid
         medoids_exhs[i] = idx_i[(tmp * tmp).sum(1).argmin()]
-        idxs.append(streamlines_ids[idx_i])
+        idxs.append(set(np.array(list(streamlines_ids))[idx_i].tolist()))
         
     t_exhs_query = time.time() - t0
     print t_exhs_query, "sec"
