@@ -188,6 +188,8 @@ def qb_wrapper(data, qb_threshold, streamlines_ids=None, qb_n_points=None):
 
 def mbkm_wrapper(full_dissimilarity_matrix, n_clusters, streamlines_ids):
     """Wrapper of MBKM with API compatible to the Manipulator.
+
+    streamlines_ids can be set or list.
     """
     dissimilarity_matrix = full_dissimilarity_matrix[list(streamlines_ids)]
 
@@ -233,6 +235,8 @@ class StreamlineLabeler(Actor, Manipulator):
          
         self.mouse_x=None
         self.mouse_y=None
+
+        self.buffers = buffers
 
         self.clusters = clusters
         # Qb:
@@ -540,6 +544,12 @@ class StreamlineLabeler(Actor, Manipulator):
 
 
     def recluster_action(self):
+        sids = list(self.streamline_ids)
+        rids = list(self.representative_ids)
+        self.streamlines_first = self.buffers['first'][sids]
+        self.streamlines_count = self.buffers['count'][sids]
+        self.representatives_first = self.buffers['first'][rids]
+        self.representatives_count = self.buffers['count'][rids]
         self.select_all()
         self.remove_unselected_action()
 
