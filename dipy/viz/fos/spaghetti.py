@@ -23,7 +23,7 @@ from dipy.io.dpy import Dpy
 from dipy.tracking.metrics import downsample
 from fos import Scene
 import pickle
-from streamshow import compute_buffers, compute_buffers_representatives
+from streamshow import compute_buffers, compute_buffers_representatives, mbkm_wrapper
 from dipy.tracking.distances import bundles_distances_mam
 from dissimilarity_common import compute_disimilarity
 
@@ -80,50 +80,12 @@ if __name__ == '__main__':
         T = np.dot(T, rotation_matrix(axis, theta))
         print "Computing buffers."
         buffers = compute_buffers(T, alpha=1.0, save=True, filename=buffers_filename)
-    
-    # load initial QuickBundles with threshold qb_threshold
-    fpkl = directory_name+'data/subj_'+subject+'/101_32/DTI/qb_gqi_'+str(num_M_seeds)+'M_linear_'+str(qb_threshold)+'.pkl'
-    clusters_filename = directory_name+'data/subj_'+subject+'/101_32/DTI/qb_gqi_'+str(num_M_seeds)+'M_linear_'+str(qb_threshold)+'_clusters.pickle'
+        
+    num_prototypes = 40
+    full_dissimilarity_matrix_filename = tracks_basenane+'_dissimilarity'+str(num_prototypes)+'.npy'
     try:
-        print "Loading", clusters_filename
-        clusters = pickle.load(open(clusters_filename))
-    except IOError:
-        try:
-            print "Loading", fpkl
-            qb = pickle.load(open(fpkl))
-        except IOError:
-            print "Computing QuickBundles."
-            qb = QuickBundles(T, qb_threshold, qb_n_points)
-            print "Saving", fpkl
-            pickle.dump(qb, open(fpkl, 'w'))
-            
-        tmpa, qb_internal_id = qb.exemplars() # this function call is necessary to let qb compute qb.exempsi
-        # WRONG!
-        # clusters = dict(zip(representative_ids, [set(qb.label2tracksids(i)) for i, rid in enumerate(representative_ids)]))
-
-        # Note that the following code to construct 'clusters' works
-        # on the assumption that the actual implementation of
-        # qb.exemplars() returns the exemplars in the same order than
-        # they are returned by qb.clustering.keys(). Unfortunately I
-        # found no other way to build the 'clusters' dictionary which
-        # associates the representative ID with the set of IDs of the
-        # represented streamlines, where ID(s) are always referred to
-        # the order in which each streamline appears in the
-        # tractography. It could be meaningful to fix the qb code
-        # accordingly.
-        clusters = {}
-        for i, clusterid in enumerate(qb.clustering.keys()):
-            indices = qb.clustering[clusterid]['indices']
-            clusters[indices[qb_internal_id[i]]] = set(indices)
-
-        print "Saving", clusters_filename
-        pickle.dump(clusters, open(clusters_filename,'w'))
-
-
-    try:
-        num_prototypes = 40
-        full_dissimilarity_matrix_filename = tracks_basenane+'_dissimilarity'+str(num_prototypes)+'.npy'
         print "Loading dissimilarity representation:", full_dissimilarity_matrix_filename
+        full_dissimilarity_matrix = np.load(full_dissimilarity_matrix_filename)
     except IOError:
         print "Computing dissimilarity representation."
         fdpyw = tracks_basenane+'.dpy'    
@@ -138,6 +100,60 @@ if __name__ == '__main__':
         full_dissimilarity_matrix = compute_disimilarity(T, distance=bundles_distances_mam, prototype_policy='sff', num_prototypes=num_prototypes)
 
         np.save(full_dissimilarity_matrix_filename, full_dissimilarity_matrix)
+
+
+
+    # load initial MBKM with given n_clusters
+    n_clusters = 150
+    clusters_filename = directory_name+'data/subj_'+subject+'/101_32/DTI/mbkm_gqi_'+str(num_M_seeds)+'M_linear_'+str(n_clusters)+'_clusters.pickle'
+    try:
+        print "Loading", clusters_filename
+        clusters = pickle.load(open(clusters_filename))
+    except IOError:
+        print "Computing MBKM."
+        streamlines_ids = np.arange(full_dissimilarity_matrix.shape[0], dtype=np.int)
+        clusters = mbkm_wrapper(full_dissimilarity_matrix, n_clusters, streamlines_ids)
+        print "Saving", clusters_filename
+        pickle.dump(clusters, open(clusters_filename,'w'))
+
+
+    # # load initial QuickBundles with threshold qb_threshold
+    # fpkl = directory_name+'data/subj_'+subject+'/101_32/DTI/qb_gqi_'+str(num_M_seeds)+'M_linear_'+str(qb_threshold)+'.pkl'
+    # clusters_filename = directory_name+'data/subj_'+subject+'/101_32/DTI/qb_gqi_'+str(num_M_seeds)+'M_linear_'+str(qb_threshold)+'_clusters.pickle'
+    # try:
+    #     print "Loading", clusters_filename
+    #     clusters = pickle.load(open(clusters_filename))
+    # except IOError:
+    #     try:
+    #         print "Loading", fpkl
+    #         qb = pickle.load(open(fpkl))
+    #     except IOError:
+    #         print "Computing QuickBundles."
+    #         qb = QuickBundles(T, qb_threshold, qb_n_points)
+    #         print "Saving", fpkl
+    #         pickle.dump(qb, open(fpkl, 'w'))
+            
+    #     tmpa, qb_internal_id = qb.exemplars() # this function call is necessary to let qb compute qb.exempsi
+    #     # WRONG!
+    #     # clusters = dict(zip(representative_ids, [set(qb.label2tracksids(i)) for i, rid in enumerate(representative_ids)]))
+
+    #     # Note that the following code to construct 'clusters' works
+    #     # on the assumption that the actual implementation of
+    #     # qb.exemplars() returns the exemplars in the same order than
+    #     # they are returned by qb.clustering.keys(). Unfortunately I
+    #     # found no other way to build the 'clusters' dictionary which
+    #     # associates the representative ID with the set of IDs of the
+    #     # represented streamlines, where ID(s) are always referred to
+    #     # the order in which each streamline appears in the
+    #     # tractography. It could be meaningful to fix the qb code
+    #     # accordingly.
+    #     clusters = {}
+    #     for i, clusterid in enumerate(qb.clustering.keys()):
+    #         indices = qb.clustering[clusterid]['indices']
+    #         clusters[indices[qb_internal_id[i]]] = set(indices)
+
+    #     print "Saving", clusters_filename
+    #     pickle.dump(clusters, open(clusters_filename,'w'))
 
 
             
