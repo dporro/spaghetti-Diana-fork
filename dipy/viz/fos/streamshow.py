@@ -191,7 +191,8 @@ def mbkm_wrapper(full_dissimilarity_matrix, n_clusters, streamlines_ids):
 
     streamlines_ids can be set or list.
     """
-    dissimilarity_matrix = full_dissimilarity_matrix[list(streamlines_ids)]
+    sids = np.array(list(streamlines_ids))
+    dissimilarity_matrix = full_dissimilarity_matrix[sids]
 
     print "MBKM clustering time:",
     init = 'random'
@@ -210,8 +211,8 @@ def mbkm_wrapper(full_dissimilarity_matrix, n_clusters, streamlines_ids):
         idx_i = np.where(mbkm.labels_==i)[0]
         if idx_i.size == 0: idx_i = [0]
         tmp = full_dissimilarity_matrix[idx_i] - centroid
-        medoids_exhs[i] = idx_i[(tmp * tmp).sum(1).argmin()]
-        idxs.append(set(np.array(list(streamlines_ids))[idx_i].tolist()))
+        medoids_exhs[i] = sids[idx_i[(tmp * tmp).sum(1).argmin()]]
+        idxs.append(set(sids[idx_i].tolist()))
         
     t_exhs_query = time.time() - t0
     print t_exhs_query, "sec"
@@ -247,7 +248,7 @@ class StreamlineLabeler(Actor, Manipulator):
 
         # We keep the representative_ids as list to preserve order,
         # which is necessary for presentation purposes:
-        self.representative_ids_ordered = self.clusters.keys()
+        self.representative_ids_ordered = sorted(self.clusters.keys())
 
         self.representatives_alpha = representatives_alpha
 
@@ -286,8 +287,10 @@ class StreamlineLabeler(Actor, Manipulator):
         # This is the color of a selected representative.
         self.color_selected = np.array([1.0, 1.0, 1.0, 1.0], dtype='f4')
 
-        self.streamlines_visualized_first = self.streamlines_first
-        self.streamlines_visualized_count = self.streamlines_count
+        # This are the visualized streamlines.
+        # IS COPY NEEDED HERE????
+        self.streamlines_visualized_first = self.streamlines_first.copy()
+        self.streamlines_visualized_count = self.streamlines_count.copy()
 
         # Clustering:
         self.clustering_parameter = clustering_parameter
@@ -529,11 +532,12 @@ class StreamlineLabeler(Actor, Manipulator):
         # 0) Restore original color to selected representatives.
         self.unselect_all()
         # 1) sync self.representative_ids_ordered with new clusters:
-        self.representative_ids_ordered = self.clusters.keys()
+        self.representative_ids_ordered = sorted(self.clusters.keys())
         # 2) change first and count buffers of representatives:
-        self.representatives_first = np.ascontiguousarray(self.streamlines_first[self.clusters.keys()], dtype='i4')
-        self.representatives_count = np.ascontiguousarray(self.streamlines_count[self.clusters.keys()], dtype='i4')
+        self.representatives_first = np.ascontiguousarray(self.streamlines_first[self.representative_ids_ordered], dtype='i4')
+        self.representatives_count = np.ascontiguousarray(self.streamlines_count[self.representative_ids_ordered], dtype='i4')
         # 3) recompute self.representatives:
+        # (this is needed just for get_pointed_representative())
         self.representatives = buffer2coordinates(self.representatives_buffer,
                                                   self.representatives_first,
                                                   self.representatives_count)
@@ -544,14 +548,8 @@ class StreamlineLabeler(Actor, Manipulator):
 
 
     def recluster_action(self):
-        sids = list(self.streamline_ids)
-        rids = list(self.representative_ids)
-        self.streamlines_first = self.buffers['first'][sids]
-        self.streamlines_count = self.buffers['count'][sids]
-        self.representatives_first = self.buffers['first'][rids]
-        self.representatives_count = self.buffers['count'][rids]
         self.select_all()
-        self.remove_unselected_action()
+        self.remove_unselected()
 
 
 
