@@ -12,7 +12,6 @@ pyglet.options['debug_font'] = debug
 pyglet.options['debug_x11'] = debug
 pyglet.options['debug_trace'] = debug
 
-
 import numpy as np
 import nibabel as nib
 from dipy.segment.quickbundles import QuickBundles
@@ -45,6 +44,7 @@ if __name__ == '__main__':
     directory_name='./'
     qb_threshold = 30 # in mm
     qb_n_points = 12
+    downsampling = True # False
 
     #load T1 volume registered in MNI space
     t1_filename = directory_name+'data/subj_'+subject+'/MPRAGE_32/T1_flirt_out.nii.gz'
@@ -60,6 +60,7 @@ if __name__ == '__main__':
         print "Loading", buffers_filename
         buffers = np.load(buffers_filename)
     except IOError:
+        print "Buffers not found, recomputing."
         fdpyw = tracks_basenane+'.dpy'    
         dpr = Dpy(fdpyw, 'r')
         print "Loading", fdpyw
@@ -67,17 +68,33 @@ if __name__ == '__main__':
         dpr.close()
     
         # T = T[:5000]
-        T = np.array(T, dtype=np.object)
+        # T = np.array(T, dtype=np.object)
 
-        print "Dowsampling."
-        T = [downsample(t, qb_n_points) - np.array(data.shape[:3]) / 2. for t in T]
+        if downsampling:
+            print "Dowsampling."
+            T = [downsample(t, qb_n_points) - np.array(data.shape[:3]) / 2. for t in T]
+            
         print "Rotating."
         axis = np.array([1, 0, 0])
-        theta = - 90. 
-        T = np.dot(T,rotation_matrix(axis, theta))
+        theta = - 90.
+        if downsampling:
+            T = np.dot(T,rotation_matrix(axis, theta))
+        else:
+            T = [np.dot(t,rotation_matrix(axis, theta)) for t in T]
+            
         axis = np.array([0, 1, 0])
-        theta = 180. 
-        T = np.dot(T, rotation_matrix(axis, theta))
+        theta = 180.
+        if downsampling:
+            T = np.dot(T, rotation_matrix(axis, theta))
+        else:
+            T = [np.dot(t, rotation_matrix(axis, theta)) for t in T]
+
+        if not downsampling:
+            print "Centering."
+            mean_xyz = np.vstack(T).mean(0)
+            T = [(t - mean_xyz) for t in T]
+            T = np.array(T, dtype=np.object)
+            
         print "Computing buffers."
         buffers = compute_buffers(T, alpha=1.0, save=True, filename=buffers_filename)
         
@@ -87,21 +104,24 @@ if __name__ == '__main__':
         print "Loading dissimilarity representation:", full_dissimilarity_matrix_filename
         full_dissimilarity_matrix = np.load(full_dissimilarity_matrix_filename)
     except IOError:
+        print "Dissimilarity matrix not found."
         print "Computing dissimilarity representation."
-        fdpyw = tracks_basenane+'.dpy'    
-        dpr = Dpy(fdpyw, 'r')
-        print "Loading", fdpyw
-        T = dpr.read_tracks()
-        dpr.close()
+        try:
+            T
+        except NameError:
+            fdpyw = tracks_basenane+'.dpy'    
+            dpr = Dpy(fdpyw, 'r')
+            print "Loading", fdpyw
+            T = dpr.read_tracks()
+            dpr.close()
     
-        # T = T[:5000]
-        T = np.array(T, dtype=np.object)
+            # T = T[:5000]
+            T = np.array(T, dtype=np.object)
         
         full_dissimilarity_matrix = compute_disimilarity(T, distance=bundles_distances_mam, prototype_policy='sff', num_prototypes=num_prototypes)
-
+        print "Saving", full_dissimilarity_matrix_filename
         np.save(full_dissimilarity_matrix_filename, full_dissimilarity_matrix)
-
-
+        
 
     # load initial MBKM with given n_clusters
     n_clusters = 150
@@ -110,6 +130,7 @@ if __name__ == '__main__':
         print "Loading", clusters_filename
         clusters = pickle.load(open(clusters_filename))
     except IOError:
+        print "MBKM clustering not found."
         print "Computing MBKM."
         streamlines_ids = np.arange(full_dissimilarity_matrix.shape[0], dtype=np.int)
         clusters = mbkm_wrapper(full_dissimilarity_matrix, n_clusters, streamlines_ids)
