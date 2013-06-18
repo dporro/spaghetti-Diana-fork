@@ -44,7 +44,7 @@ if __name__ == '__main__':
     directory_name='./'
     qb_threshold = 30 # in mm
     qb_n_points = 12
-    downsampling = True # False
+    downsampling = False
 
     #load T1 volume registered in MNI space
     t1_filename = directory_name+'data/subj_'+subject+'/MPRAGE_32/T1_flirt_out.nii.gz'
@@ -72,7 +72,10 @@ if __name__ == '__main__':
 
         if downsampling:
             print "Dowsampling."
-            T = [downsample(t, qb_n_points) - np.array(data.shape[:3]) / 2. for t in T]
+            T = downsample(t, qb_n_points)
+
+        print "Centering."
+        T = [t - np.array(data.shape[:3]) / 2.0 for t in T]
             
         print "Rotating."
         axis = np.array([1, 0, 0])
@@ -89,12 +92,7 @@ if __name__ == '__main__':
         else:
             T = [np.dot(t, rotation_matrix(axis, theta)) for t in T]
 
-        if not downsampling:
-            print "Centering."
-            mean_xyz = np.vstack(T).mean(0)
-            T = [(t - mean_xyz) for t in T]
-            T = np.array(T, dtype=np.object)
-            
+        T = np.array(T, dtype=np.object)
         print "Computing buffers."
         buffers = compute_buffers(T, alpha=1.0, save=True, filename=buffers_filename)
         
