@@ -70,7 +70,9 @@ def streamline2rgb(streamline):
     color to represent it.
     """
     # simplest implementation:
-    return orient2rgb(streamline[0] - streamline[-1])
+    tmp = orient2rgb(streamline[0] - streamline[-1])
+    tmp[1], tmp[2] = tmp[2], tmp[1]
+    return tmp
 
 
 def compute_colors(streamlines, alpha):
@@ -144,7 +146,7 @@ def compute_buffers_representatives(buffers, representative_ids):
     first = buffers['first'][representative_ids].astype('i4')
         
     representative_buffers = {'buffer': buffers['buffer'],
-                              'colors': buffers['colors'],
+                              'colors': buffers['colors'].copy(),
                               'count': np.ascontiguousarray(count),
                               'first': np.ascontiguousarray(first)}
     return representative_buffers
@@ -197,7 +199,7 @@ def mbkm_wrapper(full_dissimilarity_matrix, n_clusters, streamlines_ids):
     print "MBKM clustering time:",
     init = 'random'
     mbkm = MiniBatchKMeans(init=init, n_clusters=n_clusters, batch_size=1000,
-                          n_init=3, max_no_improvement=5, verbose=0)
+                          n_init=10, max_no_improvement=5, verbose=0)
     t0 = time.time()
     mbkm.fit(dissimilarity_matrix)
     t_mini_batch = time.time() - t0
