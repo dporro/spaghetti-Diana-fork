@@ -71,6 +71,9 @@ def streamline2rgb(streamline):
     """
     # simplest implementation:
     tmp = orient2rgb(streamline[0] - streamline[-1])
+    # The old version of DiPy use the wrong definition of the color convention:
+    # (http://en.wikipedia.org/wiki/Tractography)
+    # which swaps green and blu. So here is an ugly fix:
     tmp[1], tmp[2] = tmp[2], tmp[1]
     return tmp
 
